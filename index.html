@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chinis Burgers - POS & Dashboard</title>
-    <!-- Cargamos Chart.js desde CDN para los gráficos -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
@@ -14,6 +13,7 @@
             --card-bg: #ffffff;
             --text: #2b2d42;
             --success: #2a9d8f;
+            --danger: #d90429;
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, sans-serif; }
@@ -39,10 +39,13 @@
         .item-producto { background: var(--card-bg); border: 2px solid #e2e8f0; border-radius: 10px; padding: 15px; text-align: center; cursor: pointer; }
         .item-producto.selected { border-color: var(--primary); background-color: #ffe5e8; }
 
-        button { width: 100%; background-color: var(--primary); color: white; border: none; padding: 14px; border-radius: 8px; font-size: 1rem; font-weight: bold; margin-top: 15px; cursor: pointer; }
+        button { width: 100%; background-color: var(--primary); color: white; border: none; padding: 12px; border-radius: 8px; font-size: 0.9rem; font-weight: bold; margin-top: 10px; cursor: pointer; }
         .btn-success { background-color: var(--success); }
+        .btn-danger { background-color: var(--danger); padding: 6px 10px; width: auto; margin-top: 0; }
+        .btn-edit { background-color: var(--secondary); padding: 6px 10px; width: auto; margin-top: 0; }
 
-        .list-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #eee; }
+        .list-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #eee; }
+        .actions { display: flex; gap: 5px; }
 
         nav { position: fixed; bottom: 0; left: 0; right: 0; background: white; display: flex; justify-content: space-around; border-top: 1px solid #ddd; padding: 10px 0; }
         nav div { text-align: center; font-size: 0.8rem; color: #666; cursor: pointer; }
@@ -62,7 +65,7 @@
             <button class="btn-success" onclick="procesarVenta()">Confirmar y Cobrar</button>
         </div>
 
-        <!-- VISTA DE DASHBOARD / METRICAS -->
+        <!-- VISTA DE DASHBOARD -->
         <div id="sec-dashboard" class="section">
             <h2>📊 Métricas del Día</h2>
             <div class="kpi-container">
@@ -109,7 +112,7 @@
                 <label>Precio Total Pagado ($)</label>
                 <input type="number" id="ins-precio" step="0.01" placeholder="Ej: 18000">
 
-                <button onclick="guardarInsumo()">Cargar al Inventario</button>
+                <button class="btn-success" onclick="guardarInsumo()">Cargar al Inventario</button>
             </div>
 
             <div class="card">
@@ -119,7 +122,7 @@
         </div>
     </div>
 
-    <!-- NAVEGACIÓN INFERIOR -->
+    <!-- NAVEGACIÓN -->
     <nav>
         <div class="nav-item active" onclick="cambiarSeccion('sec-ventas', this)"><span>🛒</span>Vender</div>
         <div class="nav-item" onclick="cambiarSeccion('sec-dashboard', this)"><span>📈</span>Dashboard</div>
@@ -127,7 +130,6 @@
     </nav>
 
     <script>
-        // URL pública de tu backend en Render
         const API_URL = "https://chinis-burgers.onrender.com"; 
         let chartTop, chartCat;
 
@@ -177,9 +179,7 @@
                 } else {
                     alert("❌ Error al guardar insumo.");
                 }
-            } catch (e) {
-                console.error("Error al conectar con la API:", e);
-            }
+            } catch (e) { console.error(e); }
         }
 
         async function cargarInsumos() {
@@ -192,15 +192,58 @@
                         <div class="list-item">
                             <div>
                                 <strong>${i.nombre}</strong><br>
-                                <small>Stock: ${i.cantidad_stock} ${i.unidad_medida}</small>
+                                <small>Stock: ${i.cantidad_stock} ${i.unidad_medida} | Costo: $${i.costo_unitario.toFixed(2)}/${i.unidad_medida}</small>
                             </div>
-                            <div>$${i.costo_unitario.toFixed(2)} / ${i.unidad_medida}</div>
+                            <div class="actions">
+                                <button class="btn-edit" onclick="editarInsumo(${i.id}, ${i.cantidad_stock}, ${i.costo_unitario})">✏️️</button>
+                                <button class="btn-danger" onclick="eliminarInsumo(${i.id}, '${i.nombre}')">🗑️</button>
+                            </div>
                         </div>`;
                 });
                 document.getElementById('lista-insumos').innerHTML = html || 'No hay insumos registrados.';
-            } catch (e) {
-                console.error("Error al cargar insumos:", e);
-            }
+            } catch (e) { console.error("Error al cargar insumos:", e); }
+        }
+
+        async function editarInsumo(id, stockActual, costoActual) {
+            const nuevoStock = prompt("Nuevo Stock total disponible:", stockActual);
+            if (nuevoStock === null) return;
+
+            const nuevoCosto = prompt("Nuevo Costo por unidad de medida ($):", costoActual);
+            if (nuevoCosto === null) return;
+
+            const data = {
+                cantidad_stock: parseFloat(nuevoStock),
+                costo_unitario: parseFloat(nuevoCosto)
+            };
+
+            try {
+                const res = await fetch(`${API_URL}/insumos/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                if (res.ok) {
+                    alert("✅ Insumo actualizado");
+                    cargarInsumos();
+                } else {
+                    alert("❌ Error al actualizar");
+                }
+            } catch (e) { console.error(e); }
+        }
+
+        async function eliminarInsumo(id, nombre) {
+            if (!confirm(`¿Seguro que deseas eliminar '${nombre}' del inventario?`)) return;
+
+            try {
+                const res = await fetch(`${API_URL}/insumos/${id}`, { method: 'DELETE' });
+                if (res.ok) {
+                    alert("🗑️ Insumo eliminado");
+                    cargarInsumos();
+                } else {
+                    alert("❌ Error al eliminar");
+                }
+            } catch (e) { console.error(e); }
         }
 
         async function cargarDashboard() {
@@ -211,7 +254,6 @@
                 document.getElementById('kpi-monto').innerText = `$${data.ventas_hoy_monto.toFixed(2)}`;
                 document.getElementById('kpi-pedidos').innerText = data.ventas_hoy_cantidad;
 
-                // Gráfico Top Productos
                 const ctxTop = document.getElementById('chartTopProductos').getContext('2d');
                 if (chartTop) chartTop.destroy();
                 chartTop = new Chart(ctxTop, {
@@ -227,7 +269,6 @@
                     options: { responsive: true, plugins: { legend: { display: false } } }
                 });
 
-                // Gráfico Categorías
                 const ctxCat = document.getElementById('chartCategorias').getContext('2d');
                 if (chartCat) chartCat.destroy();
                 chartCat = new Chart(ctxCat, {
@@ -242,9 +283,7 @@
                     options: { responsive: true }
                 });
 
-            } catch (e) {
-                console.error("Error al cargar dashboard:", e);
-            }
+            } catch (e) { console.error("Error al cargar dashboard:", e); }
         }
 
         async function cargarProductos() {
@@ -263,7 +302,6 @@
             } catch (e) { console.error(e); }
         }
 
-        // Carga inicial
         cargarProductos();
     </script>
 </body>

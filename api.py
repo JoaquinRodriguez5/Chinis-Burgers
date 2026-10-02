@@ -152,3 +152,29 @@ def obtener_dashboard_stats(db: Session = Depends(get_db)):
         "top_productos": [{"nombre": p[0], "cantidad": p[1]} for p in top_productos],
         "top_categorias": [{"categoria": c[0], "cantidad": c[1]} for c in top_categorias]
     }
+
+class InsumoUpdate(BaseModel):
+    cantidad_stock: float
+    costo_unitario: float
+
+@app.put("/insumos/{insumo_id}")
+def actualizar_insumo(insumo_id: int, datos: InsumoUpdate, db: Session = Depends(get_db)):
+    insumo = db.query(InsumoModel).filter(InsumoModel.id == insumo_id).first()
+    if not insumo:
+        raise HTTPException(status_code=404, detail="Insumo no encontrado")
+    
+    insumo.cantidad_stock = datos.cantidad_stock
+    insumo.costo_unitario = datos.costo_unitario
+    db.commit()
+    db.refresh(insumo)
+    return insumo
+
+@app.delete("/insumos/{insumo_id}")
+def eliminar_insumo(insumo_id: int, db: Session = Depends(get_db)):
+    insumo = db.query(InsumoModel).filter(InsumoModel.id == insumo_id).first()
+    if not insumo:
+        raise HTTPException(status_code=404, detail="Insumo no encontrado")
+    
+    db.delete(insumo)
+    db.commit()
+    return {"status": "ok", "message": f"Insumo {insumo_id} eliminado"}

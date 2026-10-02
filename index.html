@@ -297,7 +297,21 @@
                 let html = '';
 
                 productosGlobales.forEach(p => {
-                    let recetaText = p.receta.map(r => `${r.cantidad_utilizada} ${r.unidad_medida} de ${r.insumo_nombre}`).join(', ');
+                    let recetaText = p.receta.map(r => {
+                        let cant = r.cantidad_utilizada;
+                        let unidad = r.unidad_medida;
+
+                        // Conversión inteligente para la vista de cocina
+                        if (unidad === 'kg' && cant < 1) {
+                            cant = Math.round(cant * 1000);
+                            unidad = 'g';
+                        } else if (unidad === 'l' && cant < 1) {
+                            cant = Math.round(cant * 1000);
+                            unidad = 'ml';
+                        }
+
+                        return `${cant} ${unidad} de ${r.insumo_nombre}`;
+                    }).join(', ');
 
                     html += `
                         <div class="list-item">

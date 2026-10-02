@@ -799,12 +799,13 @@
             return num;
         }
 
+                // Menú de edición con las 3 opciones (Ajustar, Agregar, Modificar Precio)
         // Menú de edición con las 3 opciones (Ajustar, Agregar, Modificar Precio)
         async function editarInsumo(id, nombre, stockActual, costoActual, unidadMedida) {
             const opcion = prompt(
                 `Elegí una opción para '${nombre}':\n\n` +
                 `1. Ajustar stock (Inventario real hoy)\n` +
-                `2. Agregar stock (Sumar compra: ej. 1kg, 250g, 1L, 10ml, 1un)\n` +
+                `2. Agregar stock (Sumar reposición: ej. 1kg, 250g, 1L, 10ml, 1un)\n` +
                 `3. Modificar precio ($ por ${unidadMedida})`
             );
 
@@ -823,29 +824,20 @@
                 showToast(`✅ Stock de ${nombre} ajustado a ${nuevoStock} ${unidadMedida}`);
 
             } else if (opcion === "2") {
-                // --- OPCIÓN 2: AGREGAR STOCK ---
-                const inputCantidad = prompt(`¿Cuánto compraste/agregaste de '${nombre}'? (ej: 250g, 1kg, 500ml, 2L, 5un):`);
+                // --- OPCIÓN 2: AGREGAR STOCK (SIN MODIFICAR PRECIO) ---
+                const inputCantidad = prompt(`¿Cuánto querés AGREGAR a '${nombre}'? (ej: 250g, 1kg, 500ml, 2L, 5un):`);
                 if (inputCantidad === null) return;
 
                 const cantidadIngresada = parsearCantidadYUnidad(inputCantidad, unidadMedida);
                 if (cantidadIngresada === null || cantidadIngresada <= 0) {
-                    showToast("⚠️️ Cantidad ingresada no válida", true);
+                    showToast("⚠️ Cantidad ingresada no válida", true);
                     return;
                 }
 
-                const inputPrecio = prompt(`¿Cuánto te salió en total esa compra de ${inputCantidad}? ($):`);
-                if (inputPrecio === null) return;
-
-                const precioPagado = parseFloat(inputPrecio);
-                if (isNaN(precioPagado) || precioPagado < 0) {
-                    showToast("⚠️ Precio no válido", true);
-                    return;
-                }
-
+                // Sumamos directamente al stock existente manteniendo el costo actual intacto
                 const nuevoStockFinal = stockActual + cantidadIngresada;
-                const nuevoCostoUnitario = precioPagado / cantidadIngresada;
 
-                await enviarActualizacionInsumo(id, { cantidad_stock: nuevoStockFinal, costo_unitario: nuevoCostoUnitario });
+                await enviarActualizacionInsumo(id, { cantidad_stock: nuevoStockFinal, costo_unitario: costoActual });
                 showToast(`✅ Se sumaron ${cantidadIngresada} ${unidadMedida} a ${nombre}`);
 
             } else if (opcion === "3") {

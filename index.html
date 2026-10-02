@@ -36,8 +36,12 @@
         .kpi-card p { font-size: 1.3rem; font-weight: bold; margin-top: 5px; }
 
         .grid-productos { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        .item-producto { background: var(--card-bg); border: 2px solid #e2e8f0; border-radius: 10px; padding: 15px; text-align: center; cursor: pointer; user-select: none; }
+        .item-producto { background: var(--card-bg); border: 2px solid #e2e8f0; border-radius: 10px; padding: 12px; text-align: center; user-select: none; }
         .item-producto.selected { border-color: var(--primary); background-color: #ffe5e8; font-weight: bold; }
+
+        .counter-controls { display: flex; justify-content: center; align-items: center; gap: 10px; margin-top: 8px; }
+        .btn-qty { background: var(--secondary); color: white; border: none; width: 32px; height: 32px; border-radius: 50%; font-size: 1.2rem; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+        .qty-val { font-size: 1rem; font-weight: bold; width: 20px; }
 
         button { width: 100%; background-color: var(--primary); color: white; border: none; padding: 12px; border-radius: 8px; font-size: 0.9rem; font-weight: bold; margin-top: 10px; cursor: pointer; }
         .btn-success { background-color: var(--success); }
@@ -65,15 +69,16 @@
         <!-- VISTA DE VENTAS -->
         <div id="sec-ventas" class="section active">
             <h2>Registrar Venta Rápidamente</h2>
-            <p style="font-size: 0.85rem; color: #666; margin-bottom: 10px;">Toca los productos para agregarlos al pedido:</p>
             <div id="grid-productos" class="grid-productos"></div>
-            <button class="btn-success" onclick="procesarVenta()">Confirmar y Cobrar</button>
+            <button class="btn-success" style="margin-top: 15px;" onclick="procesarVenta()">Confirmar y Cobrar</button>
         </div>
 
-        <!-- VISTA DE CREAR PRODUCTOS / RECETAS -->
+        <!-- VISTA DE CREAR Y EDITAR PRODUCTOS / RECETAS -->
         <div id="sec-productos" class="section">
             <div class="card">
-                <h2>🍕 Crear Producto con Receta</h2>
+                <h2 id="prod-form-title">🍕 Crear Producto con Receta</h2>
+                <input type="hidden" id="edit-prod-id">
+                
                 <label>Nombre del Producto</label>
                 <input type="text" id="prod-nombre" placeholder="Ej: Pizza Muzza / Burger Doble">
 
@@ -88,13 +93,17 @@
                 <label>Precio de Venta ($)</label>
                 <input type="number" id="prod-precio" placeholder="Ej: 8500">
 
-                <label>Ingredientes / Receta (Descuento de stock)</label>
-                <div id="receta-container">
-                    <!-- Se agregan filas dinámicamente -->
-                </div>
+                <label>Ingredientes / Receta (Aclara la cantidad utilizada)</label>
+                <div id="receta-container"></div>
                 <button type="button" style="background: #6c757d; margin-top: 5px;" onclick="agregarFilaReceta()">+ Agregar Ingrediente</button>
 
                 <button class="btn-success" style="margin-top: 15px;" onclick="guardarProducto()">Guardar Producto</button>
+                <button id="btn-cancel-edit" style="background: #6c757d; display: none;" onclick="resetFormProducto()">Cancelar Edición</button>
+            </div>
+
+            <div class="card">
+                <h2>Lista de Productos Creados</h2>
+                <div id="lista-productos-config"></div>
             </div>
         </div>
 
@@ -167,6 +176,7 @@
         const API_URL = "https://chinis-burgers.onrender.com"; 
         let chartTop, chartCat;
         let listaInsumosGlobal = [];
+        let productosGlobales = [];
         let productosSeleccionados = {};
 
         function cambiarSeccion(idSeccion, el) {
@@ -183,37 +193,50 @@
 
         async function prepararFormularioProductos() {
             try {
-                const res = await fetch(`${API_URL}/insumos`);
-                listaInsumosGlobal = await res.json();
-                document.getElementById('receta-container').innerHTML = '';
-                agregarFilaReceta(); // Agregar primera fila por defecto
+                const resInsumos = await fetch(`${API_URL}/insumos`);
+                listaInsumosGlobal = await resInsumos.json();
+                
+                resetFormProducto();
+                cargarListaProductosConfig();
             } catch (e) { console.error(e); }
         }
 
-        function agregarFilaReceta() {
+        function resetFormProducto() {
+            document.getElementById('prod-form-title').innerText = "🍕 Crear Producto con Receta";
+            document.getElementById('edit-prod-id').value = "";
+            document.getElementById('prod-nombre').value = "";
+            document.getElementById('prod-precio').value = "";
+            document.getElementById('btn-cancel-edit').style.display = "none";
+            document.getElementById('receta-container').innerHTML = "";
+            agregarFilaReceta();
+        }
+
+        function agregarFilaReceta(insumoId = "", cantidad = "") {
             const container = document.getElementById('receta-container');
             const div = document.createElement('div');
             div.className = 'receta-row';
 
             let options = '<option value="">Seleccionar insumo...</option>';
             listaInsumosGlobal.forEach(i => {
-                options += `<option value="${i.id}">${i.nombre} (${i.unidad_medida})</option>`;
+                const sel = (i.id == insumoId) ? 'selected' : '';
+                options += `<option value="${i.id}" data-unidad="${i.unidad_medida}" ${sel}>${i.nombre} (${i.unidad_medida})</option>`;
             });
 
             div.innerHTML = `
                 <select class="receta-insumo-id">${options}</select>
-                <input type="number" class="receta-cantidad" step="0.001" placeholder="Cant. usada (ej: 0.250)">
+                <input type="number" class="receta-cantidad" step="0.001" value="${cantidad}" placeholder="Cant (ej: 250 si es g)">
             `;
             container.appendChild(div);
         }
 
         async function guardarProducto() {
+            const prodId = document.getElementById('edit-prod-id').value;
             const nombre = document.getElementById('prod-nombre').value.trim();
             const categoria = document.getElementById('prod-categoria').value;
             const precio = parseFloat(document.getElementById('prod-precio').value);
 
             if (!nombre || isNaN(precio)) {
-                alert("⚠️ Por favor ingresa nombre y precio válido.");
+                alert("⚠️ Ingresa un nombre y precio válido.");
                 return;
             }
 
@@ -221,10 +244,19 @@
             const receta = [];
 
             filas.forEach(f => {
-                const insumoId = f.querySelector('.receta-insumo-id').value;
-                const cantidad = parseFloat(f.querySelector('.receta-cantidad').value);
+                const selectEl = f.querySelector('.receta-insumo-id');
+                const insumoId = selectEl.value;
+                let cantidad = parseFloat(f.querySelector('.receta-cantidad').value);
 
                 if (insumoId && !isNaN(cantidad) && cantidad > 0) {
+                    const selectedOption = selectEl.options[selectEl.selectedIndex];
+                    const unidadMedida = selectedOption.getAttribute('data-unidad');
+
+                    // Conversión automática: Si el insumo está registrado en kg/l y colocas > 1 (ej: 250 g), se convierte a kg/l (0.25)
+                    if ((unidadMedida === 'kg' || unidadMedida === 'l') && cantidad >= 1) {
+                        cantidad = cantidad / 1000;
+                    }
+
                     receta.push({
                         insumo_id: parseInt(insumoId),
                         cantidad_utilizada: cantidad
@@ -239,21 +271,86 @@
                 receta: receta
             };
 
+            const url = prodId ? `${API_URL}/productos/${prodId}` : `${API_URL}/productos/con-receta`;
+            const method = prodId ? 'PUT' : 'POST';
+
             try {
-                const res = await fetch(`${API_URL}/productos/con-receta`, {
-                    method: 'POST',
+                const res = await fetch(url, {
+                    method: method,
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)
                 });
 
                 if (res.ok) {
-                    alert(`✅ Producto '${nombre}' creado con éxito`);
-                    document.getElementById('prod-nombre').value = '';
-                    document.getElementById('prod-precio').value = '';
-                    document.getElementById('receta-container').innerHTML = '';
-                    agregarFilaReceta();
+                    alert(`✅ Producto '${nombre}' guardado correctamente.`);
+                    prepararFormularioProductos();
                 } else {
                     alert("❌ Error al guardar producto.");
+                }
+            } catch (e) { console.error(e); }
+        }
+
+        async function cargarListaProductosConfig() {
+            try {
+                const res = await fetch(`${API_URL}/productos`);
+                productosGlobales = await res.json();
+                let html = '';
+
+                productosGlobales.forEach(p => {
+                    let recetaText = p.receta.map(r => `${r.cantidad_utilizada} ${r.unidad_medida} de ${r.insumo_nombre}`).join(', ');
+
+                    html += `
+                        <div class="list-item">
+                            <div>
+                                <strong>${p.nombre}</strong> ($${p.precio_venta.toFixed(2)})<br>
+                                <small style="color: #666;">Receta: ${recetaText || 'Sin ingredientes asignados'}</small>
+                            </div>
+                            <div class="actions">
+                                <button class="btn-edit" onclick="editarProducto(${p.id})">✏ Edit</button>
+                                <button class="btn-danger" onclick="eliminarProducto(${p.id}, '${p.nombre}')">🗑</button>
+                            </div>
+                        </div>`;
+                });
+
+                document.getElementById('lista-productos-config').innerHTML = html || 'No hay productos creados.';
+            } catch (e) { console.error(e); }
+        }
+
+        function editarProducto(id) {
+            const p = productosGlobales.find(item => item.id === id);
+            if (!p) return;
+
+            document.getElementById('prod-form-title').innerText = `✏️ Editar Producto: ${p.nombre}`;
+            document.getElementById('edit-prod-id').value = p.id;
+            document.getElementById('prod-nombre').value = p.nombre;
+            document.getElementById('prod-categoria').value = p.categoria;
+            document.getElementById('prod-precio').value = p.precio_venta;
+            document.getElementById('btn-cancel-edit').style.display = "block";
+
+            document.getElementById('receta-container').innerHTML = "";
+            if (p.receta.length === 0) {
+                agregarFilaReceta();
+            } else {
+                p.receta.forEach(r => {
+                    // Muestra el valor en g/ml para fácil lectura si era decimal menor a 1
+                    let cantDisplay = r.cantidad_utilizada;
+                    if ((r.unidad_medida === 'kg' || r.unidad_medida === 'l') && r.cantidad_utilizada < 1) {
+                        cantDisplay = r.cantidad_utilizada * 1000;
+                    }
+                    agregarFilaReceta(r.insumo_id, cantDisplay);
+                });
+            }
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        async function eliminarProducto(id, nombre) {
+            if (!confirm(`¿Eliminar '${nombre}' y su receta?`)) return;
+
+            try {
+                const res = await fetch(`${API_URL}/productos/${id}`, { method: 'DELETE' });
+                if (res.ok) {
+                    alert("🗑️ Producto eliminado");
+                    prepararFormularioProductos();
                 }
             } catch (e) { console.error(e); }
         }
@@ -263,41 +360,53 @@
                 const res = await fetch(`${API_URL}/productos`);
                 const productos = await res.json();
                 let html = '';
-                productosSeleccionados = {};
 
                 productos.forEach(p => {
+                    const qty = productosSeleccionados[p.id] || 0;
+                    const isSelected = qty > 0;
+
                     html += `
-                        <div class="item-producto" id="prod-card-${p.id}" onclick="toggleProducto(${p.id})">
+                        <div class="item-producto ${isSelected ? 'selected' : ''}" id="prod-card-${p.id}">
                             <strong>${p.nombre}</strong><br>
-                            $${p.precio_venta.toFixed(2)}
-                            <div id="prod-cant-${p.id}" style="font-size: 0.8rem; color: var(--primary); margin-top: 5px;"></div>
+                            <span style="color: #555;">$${p.precio_venta.toFixed(2)}</span>
+                            <div class="counter-controls">
+                                <button class="btn-qty" onclick="modificarCantidadVenta(${p.id}, -1)">-</button>
+                                <span class="qty-val" id="qty-${p.id}">${qty}</span>
+                                <button class="btn-qty" onclick="modificarCantidadVenta(${p.id}, 1)">+</button>
+                            </div>
                         </div>`;
                 });
                 document.getElementById('grid-productos').innerHTML = html || 'No hay productos creados. Ve a 🍕 Productos para crear uno.';
             } catch (e) { console.error(e); }
         }
 
-        function toggleProducto(id) {
-            if (productosSeleccionados[id]) {
-                productosSeleccionados[id]++;
-            } else {
-                productosSeleccionados[id] = 1;
-            }
-
-            const card = document.getElementById(`prod-card-${id}`);
-            const cantDiv = document.getElementById(`prod-cant-${id}`);
+        function modificarCantidadVenta(id, cambio) {
+            if (!productosSeleccionados[id]) productosSeleccionados[id] = 0;
             
-            card.classList.add('selected');
-            cantDiv.innerText = `Seleccionados: ${productosSeleccionados[id]}`;
+            productosSeleccionados[id] += cambio;
+            if (productosSeleccionados[id] < 0) productosSeleccionados[id] = 0;
+
+            const qtySpan = document.getElementById(`qty-${id}`);
+            const card = document.getElementById(`prod-card-${id}`);
+
+            if (qtySpan) qtySpan.innerText = productosSeleccionados[id];
+            
+            if (productosSeleccionados[id] > 0) {
+                card.classList.add('selected');
+            } else {
+                card.classList.remove('selected');
+            }
         }
 
         async function procesarVenta() {
             const items = [];
             for (let id in productosSeleccionados) {
-                items.push({
-                    producto_id: parseInt(id),
-                    cantidad: productosSeleccionados[id]
-                });
+                if (productosSeleccionados[id] > 0) {
+                    items.push({
+                        producto_id: parseInt(id),
+                        cantidad: productosSeleccionados[id]
+                    });
+                }
             }
 
             if (items.length === 0) {
@@ -314,7 +423,7 @@
 
                 if (res.ok) {
                     const data = await res.json();
-                    alert(`🎉 ¡Venta registrada exitosamente! Total cobrado: $${data.total.toFixed(2)}`);
+                    alert(`🎉 ¡Venta realizada! Total cobrado: $${data.total.toFixed(2)}`);
                     productosSeleccionados = {};
                     cargarProductos();
                 } else {
@@ -381,7 +490,7 @@
                                 <small style="color: #666;">Costo: $${i.costo_unitario.toFixed(2)} / ${i.unidad_medida}</small>
                             </div>
                             <div class="actions">
-                                <button class="btn-edit" onclick="editarInsumo(${i.id}, '${i.nombre}', ${i.cantidad_stock}, ${i.costo_unitario})">✏ Editar</button>
+                                <button class="btn-edit" onclick="editarInsumo(${i.id}, '${i.nombre}', ${i.cantidad_stock}, ${i.costo_unitario})">✏ Edit</button>
                                 <button class="btn-danger" onclick="eliminarInsumo(${i.id}, '${i.nombre}')">🗑</button>
                             </div>
                         </div>`;

@@ -6,7 +6,6 @@ from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime, time
 
-# Importamos la configuración y modelos creados en database.py
 from database import (
     get_db, init_db, 
     InsumoModel, ProductoModel, RecetaModel, 
@@ -15,10 +14,8 @@ from database import (
 
 app = FastAPI(title="Chinis Burgers API")
 
-# Inicializar las tablas de la base de datos al arrancar
 init_db()
 
-# Configuración de CORS para permitir peticiones desde GitHub Pages y local
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -28,14 +25,14 @@ app.add_middleware(
 )
 
 # ==========================================
-# ESQUEMAS PYDANTIC (Entrada / Salida)
+# ESQUEMAS PYDANTIC
 # ==========================================
 
 class InsumoCreate(BaseModel):
     nombre: str
     unidad_medida: str
-    cantidad_comprada: float  # Ej: 25 (kg) o 100 (unidades)
-    precio_total: float      # Ej: 18000
+    cantidad_comprada: float
+    precio_total: float
     stock_minimo: float = 0.0
 
 class InsumoUpdate(BaseModel):
@@ -66,18 +63,15 @@ class RegistrarVenta(BaseModel):
 
 @app.get("/insumos")
 def listar_insumos(db: Session = Depends(get_db)):
-    """Devuelve la lista de todos los insumos y su stock actual."""
     return db.query(InsumoModel).order_by(InsumoModel.nombre).all()
 
 @app.post("/insumos")
 def crear_o_actualizar_insumo(insumo: InsumoCreate, db: Session = Depends(get_db)):
-    """Carga un insumo por paquete/bolsa y calcula automáticamente el costo unitario."""
     if insumo.cantidad_comprada <= 0:
         raise HTTPException(status_code=400, detail="La cantidad comprada debe ser mayor a 0")
     
     costo_unitario = insumo.precio_total / insumo.cantidad_comprada
 
-    # Si el insumo ya existe, sumamos el stock y actualizamos el costo unitario
     existente = db.query(InsumoModel).filter(InsumoModel.nombre == insumo.nombre).first()
     if existente:
         existente.cantidad_stock += insumo.cantidad_comprada
@@ -86,7 +80,6 @@ def crear_o_actualizar_insumo(insumo: InsumoCreate, db: Session = Depends(get_db
         db.refresh(existente)
         return existente
 
-    # Si no existe, creamos uno nuevo
     nuevo = InsumoModel(
         nombre=insumo.nombre,
         unidad_medida=insumo.unidad_medida,
@@ -101,7 +94,6 @@ def crear_o_actualizar_insumo(insumo: InsumoCreate, db: Session = Depends(get_db
 
 @app.put("/insumos/{insumo_id}")
 def actualizar_insumo(insumo_id: int, datos: InsumoUpdate, db: Session = Depends(get_db)):
-    """Actualiza manualmente el stock real o el costo unitario de un insumo."""
     insumo = db.query(InsumoModel).filter(InsumoModel.id == insumo_id).first()
     if not insumo:
         raise HTTPException(status_code=404, detail="Insumo no encontrado")
@@ -114,7 +106,6 @@ def actualizar_insumo(insumo_id: int, datos: InsumoUpdate, db: Session = Depends
 
 @app.delete("/insumos/{insumo_id}")
 def eliminar_insumo(insumo_id: int, db: Session = Depends(get_db)):
-    """Elimina un insumo del inventario."""
     insumo = db.query(InsumoModel).filter(InsumoModel.id == insumo_id).first()
     if not insumo:
         raise HTTPException(status_code=404, detail="Insumo no encontrado")
@@ -130,12 +121,33 @@ def eliminar_insumo(insumo_id: int, db: Session = Depends(get_db)):
 
 @app.get("/productos")
 def listar_productos(db: Session = Depends(get_db)):
-    """Devuelve la lista de productos disponibles para la venta."""
-    return db.query(ProductoModel).order_by(ProductoModel.nombre).all()
+    productos = db.query(ProductoModel).order_by(ProductoModel.nombre).all()
+    resultado = []
+    for p in productos:
+        receta_items = db.query(RecetaModel, InsumoModel)\
+            .join(InsumoModel, RecetaModel.insumo_id == InsumoModel.id)\
+            .filter(RecetaModel.producto_id == p.id).all()
+        
+        receta_lista = []
+        for r, ins in receta_items:
+            receta_lista.append({
+                "insumo_id": r.insumo_id,
+                "insumo_nombre": ins.nombre,
+                "unidad_medida": ins.unidad_medida,
+                "cantidad_utilizada": r.cantidad_utilizada
+            })
+
+        resultado.append({
+            "id": p.id,
+            "nombre": p.nombre,
+            "categoria": p.categoria,
+            "precio_venta": p.precio_venta,
+            "receta": receta_lista
+        })
+    return resultado
 
 @app.post("/productos/con-receta")
 def crear_producto_con_receta(producto_data: ProductoConRecetaCreate, db: Session = Depends(get_db)):
-    """Crea un producto nuevo en el menú vinculando sus insumos correspondientes."""
     nuevo_producto = ProductoModel(
         nombre=producto_data.nombre,
         categoria=producto_data.categoria,
@@ -145,7 +157,6 @@ def crear_producto_con_receta(producto_data: ProductoConRecetaCreate, db: Sessio
     db.commit()
     db.refresh(nuevo_producto)
 
-    # Vinculamos la receta de insumos
     for item in producto_data.receta:
         nueva_receta = RecetaModel(
             producto_id=nuevo_producto.id,
@@ -157,6 +168,41 @@ def crear_producto_con_receta(producto_data: ProductoConRecetaCreate, db: Sessio
     db.commit()
     return {"status": "ok", "producto_id": nuevo_producto.id}
 
+@app.put("/productos/{producto_id}")
+def actualizar_producto_con_receta(producto_id: int, producto_data: ProductoConRecetaCreate, db: Session = Depends(get_db)):
+    producto = db.query(ProductoModel).filter(ProductoModel.id == producto_id).first()
+    if not producto:
+        raise HTTPException(status_code=404, detail="Producto no encontrado")
+
+    producto.nombre = producto_data.nombre
+    producto.categoria = producto_data.categoria
+    producto.precio_venta = producto_data.precio_venta
+
+    # Reemplazar la receta
+    db.query(RecetaModel).filter(RecetaModel.producto_id == producto_id).delete()
+
+    for item in producto_data.receta:
+        nueva_receta = RecetaModel(
+            producto_id=producto_id,
+            insumo_id=item.insumo_id,
+            cantidad_utilizada=item.cantidad_utilizada
+        )
+        db.add(nueva_receta)
+
+    db.commit()
+    return {"status": "ok", "message": f"Producto {producto_id} actualizado"}
+
+@app.delete("/productos/{producto_id}")
+def eliminar_producto(producto_id: int, db: Session = Depends(get_db)):
+    producto = db.query(ProductoModel).filter(ProductoModel.id == producto_id).first()
+    if not producto:
+        raise HTTPException(status_code=404, detail="Producto no encontrado")
+
+    db.query(RecetaModel).filter(RecetaModel.producto_id == producto_id).delete()
+    db.delete(producto)
+    db.commit()
+    return {"status": "ok", "message": f"Producto {producto_id} eliminado"}
+
 
 # ==========================================
 # ENDPOINTS - VENTAS Y DESCUENTO DE STOCK
@@ -164,7 +210,6 @@ def crear_producto_con_receta(producto_data: ProductoConRecetaCreate, db: Sessio
 
 @app.post("/ventas")
 def registrar_venta(venta_data: RegistrarVenta, db: Session = Depends(get_db)):
-    """Registra la venta de uno o más productos y descuenta sus recetas del inventario."""
     if not venta_data.items:
         raise HTTPException(status_code=400, detail="Debe seleccionar al menos un producto")
 
@@ -182,7 +227,6 @@ def registrar_venta(venta_data: RegistrarVenta, db: Session = Depends(get_db)):
         subtotal = producto.precio_venta * item.cantidad
         total_venta += subtotal
 
-        # Guardar detalle de producto vendido
         detalle = VentaDetalleModel(
             venta_id=nueva_venta.id,
             producto_id=producto.id,
@@ -191,7 +235,6 @@ def registrar_venta(venta_data: RegistrarVenta, db: Session = Depends(get_db)):
         )
         db.add(detalle)
 
-        # Buscar la receta del producto y descontar del inventario
         recetas = db.query(RecetaModel).filter(RecetaModel.producto_id == producto.id).all()
         for r in recetas:
             insumo = db.query(InsumoModel).filter(InsumoModel.id == r.insumo_id).first()
@@ -209,19 +252,15 @@ def registrar_venta(venta_data: RegistrarVenta, db: Session = Depends(get_db)):
 
 @app.get("/stats/dashboard")
 def obtener_dashboard_stats(db: Session = Depends(get_db)):
-    """Retorna las métricas del día (ventas, pedidos, top productos y categorías)."""
     hoy_inicio = datetime.combine(datetime.utcnow().date(), time.min)
     hoy_fin = datetime.combine(datetime.utcnow().date(), time.max)
     
-    # 1. Total ventas acumuladas hoy
     ventas_hoy = db.query(func.coalesce(func.sum(VentaModel.total), 0.0))\
         .filter(VentaModel.fecha >= hoy_inicio, VentaModel.fecha <= hoy_fin).scalar()
         
-    # 2. Cantidad de tickets/pedidos hoy
     cant_ventas_hoy = db.query(func.count(VentaModel.id))\
         .filter(VentaModel.fecha >= hoy_inicio, VentaModel.fecha <= hoy_fin).scalar()
 
-    # 3. Top 5 Productos más vendidos
     top_productos = db.query(
         ProductoModel.nombre,
         func.sum(VentaDetalleModel.cantidad).label("total_vendido")
@@ -230,7 +269,6 @@ def obtener_dashboard_stats(db: Session = Depends(get_db)):
      .order_by(func.sum(VentaDetalleModel.cantidad).desc())\
      .limit(5).all()
 
-    # 4. Distribución por Categorías
     top_categorias = db.query(
         ProductoModel.categoria,
         func.sum(VentaDetalleModel.cantidad).label("total_vendido")

@@ -91,3 +91,43 @@ def registrar_venta(venta_in: VentaCreate, db: Session = Depends(get_db)):
 
     db.commit()
     return {"status": "ok", "venta_id": nueva_venta.id, "total": total_venta}
+
+from sqlalchemy import func
+from datetime import datetime, time
+
+@app.get("/stats/dashboard")
+def obtener_dashboard_stats(db: Session = Depends(get_db)):
+    # 1. Balance Diario (Hoy)
+    hoy_inicio = datetime.combine(datetime.utcnow().date(), time.min)
+    hoy_fin = datetime.combine(datetime.utcnow().date(), time.max)
+    
+    ventas_hoy = db.query(func.coalesce(func.sum(VentaModel.total), 0.0))\
+        .filter(VentaModel.fecha >= hoy_inicio, VentaModel.fecha <= hoy_fin).scalar()
+        
+    cant_ventas_hoy = db.query(func.count(VentaModel.id))\
+        .filter(VentaModel.fecha >= hoy_inicio, VentaModel.fecha <= hoy_fin).scalar()
+
+    # 2. Productos Más Vendidos (Top 5)
+    top_productos = db.query(
+        ProductoModel.nombre,
+        func.sum(VentaDetalleModel.cantidad).label("total_vendido")
+    ).join(VentaDetalleModel, ProductoModel.id == VentaDetalleModel.producto_id)\
+     .group_by(ProductoModel.nombre)\
+     .order_by(func.sum(VentaDetalleModel.cantidad).desc())\
+     .limit(5).all()
+
+    # 3. Categoría más vendida
+    top_categorias = db.query(
+        ProductoModel.categoria,
+        func.sum(VentaDetalleModel.cantidad).label("total_vendido")
+    ).join(VentaDetalleModel, ProductoModel.id == VentaDetalleModel.producto_id)\
+     .group_by(ProductoModel.categoria)\
+     .order_by(func.sum(VentaDetalleModel.cantidad).desc()).all()
+
+    return {
+        "ventas_hoy_monto": ventas_hoy,
+        "ventas_hoy_cantidad": cant_ventas_hoy,
+        "ticket_promedio": (ventas_hoy / cant_ventas_hoy) if cant_ventas_hoy > 0 else 0.0,
+        "top_productos": [{"nombre": p[0], "cantidad": p[1]} for p in top_productos],
+        "top_categorias": [{"categoria": c[0], "cantidad": c[1]} for c in top_categorias]
+    }

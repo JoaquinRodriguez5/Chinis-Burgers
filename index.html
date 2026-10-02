@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chinis Burgers - POS Mobile</title>
+    <title>Chinis Burgers - POS & Dashboard</title>
+    <!-- Cargamos Chart.js desde CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
             --primary: #e63946;
@@ -14,157 +16,34 @@
             --success: #2a9d8f;
         }
 
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, sans-serif; }
+        body { background-color: var(--bg); color: var(--text); padding-bottom: 70px; }
+        header { background-color: var(--secondary); color: white; padding: 15px; text-align: center; font-size: 1.2rem; font-weight: bold; }
+        .container { padding: 15px; max-width: 600px; margin: 0 auto; }
+        
+        .section { display: none; }
+        .section.active { display: block; }
 
-        body {
-            background-color: var(--bg);
-            color: var(--text);
-            padding-bottom: 70px; /* Espacio para barra de navegación inferior */
-        }
+        .card { background: var(--card-bg); border-radius: 12px; padding: 15px; margin-bottom: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+        h2 { margin-bottom: 12px; color: var(--secondary); font-size: 1.1rem; }
+        
+        /* Grid de KPIs */
+        .kpi-container { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
+        .kpi-card { background: var(--secondary); color: white; padding: 15px; border-radius: 10px; text-align: center; }
+        .kpi-card h3 { font-size: 0.8rem; opacity: 0.8; }
+        .kpi-card p { font-size: 1.3rem; font-weight: bold; margin-top: 5px; }
 
-        header {
-            background-color: var(--secondary);
-            color: white;
-            padding: 15px;
-            text-align: center;
-            font-size: 1.2rem;
-            font-weight: bold;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-        }
+        .grid-productos { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .item-producto { background: var(--card-bg); border: 2px solid #e2e8f0; border-radius: 10px; padding: 15px; text-align: center; cursor: pointer; }
+        .item-producto.selected { border-color: var(--primary); background-color: #ffe5e8; }
 
-        .container {
-            padding: 15px;
-            max-width: 600px;
-            margin: 0 auto;
-        }
+        button { width: 100%; background-color: var(--primary); color: white; border: none; padding: 14px; border-radius: 8px; font-size: 1rem; font-weight: bold; margin-top: 15px; cursor: pointer; }
+        .btn-success { background-color: var(--success); }
 
-        /* Secciones */
-        .section {
-            display: none;
-        }
-        .section.active {
-            display: block;
-        }
-
-        /* Tarjetas y Formularios */
-        .card {
-            background: var(--card-bg);
-            border-radius: 12px;
-            padding: 15px;
-            margin-bottom: 15px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-        }
-
-        h2 {
-            margin-bottom: 15px;
-            color: var(--secondary);
-            font-size: 1.1rem;
-        }
-
-        label {
-            display: block;
-            font-size: 0.9rem;
-            margin-top: 10px;
-            font-weight: bold;
-        }
-
-        input, select {
-            width: 100%;
-            padding: 12px;
-            margin-top: 5px;
-            border: 1px solid #ccc;
-            border-radius: 8px;
-            font-size: 1rem;
-        }
-
-        button {
-            width: 100%;
-            background-color: var(--primary);
-            color: white;
-            border: none;
-            padding: 14px;
-            border-radius: 8px;
-            font-size: 1rem;
-            font-weight: bold;
-            margin-top: 15px;
-            cursor: pointer;
-            transition: background 0.2s;
-        }
-
-        button:active {
-            opacity: 0.8;
-        }
-
-        .btn-success {
-            background-color: var(--success);
-        }
-
-        /* Grilla de productos para venta rápida */
-        .grid-productos {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-        }
-
-        .item-producto {
-            background: var(--card-bg);
-            border: 2px solid #e2e8f0;
-            border-radius: 10px;
-            padding: 15px;
-            text-align: center;
-            cursor: pointer;
-            user-select: none;
-        }
-
-        .item-producto.selected {
-            border-color: var(--primary);
-            background-color: #ffe5e8;
-        }
-
-        /* Listas e Insumos */
-        .list-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 10px 0;
-            border-bottom: 1px solid #eee;
-        }
-
-        /* Navegación inferior tipo App */
-        nav {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            background: white;
-            display: flex;
-            justify-content: space-around;
-            border-top: 1px solid #ddd;
-            padding: 10px 0;
-            box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
-        }
-
-        nav div {
-            text-align: center;
-            font-size: 0.8rem;
-            color: #666;
-            cursor: pointer;
-        }
-
-        nav div.active {
-            color: var(--primary);
-            font-weight: bold;
-        }
-
-        nav div span {
-            display: block;
-            font-size: 1.2rem;
-        }
+        nav { position: fixed; bottom: 0; left: 0; right: 0; background: white; display: flex; justify-content: space-around; border-top: 1px solid #ddd; padding: 10px 0; }
+        nav div { text-align: center; font-size: 0.8rem; color: #666; cursor: pointer; }
+        nav div.active { color: var(--primary); font-weight: bold; }
+        nav div span { display: block; font-size: 1.2rem; }
     </style>
 </head>
 <body>
@@ -175,64 +54,54 @@
         <!-- VISTA DE VENTAS -->
         <div id="sec-ventas" class="section active">
             <h2>Registrar Venta Rápidamente</h2>
-            <div id="grid-productos" class="grid-productos">
-                <!-- Se cargan dinámicamente desde la API -->
-            </div>
+            <div id="grid-productos" class="grid-productos"></div>
             <button class="btn-success" onclick="procesarVenta()">Confirmar y Cobrar</button>
+        </div>
+
+        <!-- VISTA DE DASHBOARD / METRICAS -->
+        <div id="sec-dashboard" class="section">
+            <h2>📊 Métricas del Día</h2>
+            <div class="kpi-container">
+                <div class="kpi-card">
+                    <h3>VENTAS HOY</h3>
+                    <p id="kpi-monto">$0.00</p>
+                </div>
+                <div class="kpi-card">
+                    <h3>PEDIDOS HOY</h3>
+                    <p id="kpi-pedidos">0</p>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>🍔 Productos Más Vendidos</h2>
+                <canvas id="chartTopProductos"></canvas>
+            </div>
+
+            <div class="card">
+                <h2>🍕 Distribución por Categorías</h2>
+                <canvas id="chartCategorias"></canvas>
+            </div>
         </div>
 
         <!-- VISTA DE INSUMOS -->
         <div id="sec-insumos" class="section">
             <div class="card">
-                <h2>Cargar Nuevo Insumo</h2>
-                <label>Nombre del Insumo</label>
-                <input type="text" id="ins-nombre" placeholder="Ej: Carne picada">
-                
-                <label>Unidad de Medida</label>
-                <input type="text" id="ins-unidad" placeholder="g, un, ml">
-                
-                <label>Stock Inicial</label>
-                <input type="number" id="ins-stock" placeholder="5000">
-
-                <label>Costo por Unidad de Medida ($)</label>
-                <input type="number" id="ins-costo" step="0.01" placeholder="8.5">
-
-                <button onclick="guardarInsumo()">Guardar Insumo</button>
-            </div>
-
-            <div class="card">
-                <h2>Inventario Actual</h2>
-                <div id="lista-insumos">
-                    <!-- Se carga dinámicamente -->
-                </div>
-            </div>
-        </div>
-
-        <!-- VISTA DE BALANCE -->
-        <div id="sec-balance" class="section">
-            <div class="card">
-                <h2>Resumen de Stock</h2>
-                <p>Usa la API en Render para sincronizar tu negocio desde cualquier lugar.</p>
+                <h2>Inventario de Insumos</h2>
+                <div id="lista-insumos"></div>
             </div>
         </div>
     </div>
 
-    <!-- NAVEGACIÓN INFERIOR (ESTILO APP MÓVIL) -->
+    <!-- NAVEGACIÓN -->
     <nav>
-        <div class="nav-item active" onclick="cambiarSeccion('sec-ventas', this)">
-            <span>🛒</span>Vender
-        </div>
-        <div class="nav-item" onclick="cambiarSeccion('sec-insumos', this)">
-            <span>📦</span>Insumos
-        </div>
-        <div class="nav-item" onclick="cambiarSeccion('sec-balance', this)">
-            <span>📊</span>Balance
-        </div>
+        <div class="nav-item active" onclick="cambiarSeccion('sec-ventas', this)"><span>🛒</span>Vender</div>
+        <div class="nav-item" onclick="cambiarSeccion('sec-dashboard', this)"><span>📈</span>Dashboard</div>
+        <div class="nav-item" onclick="cambiarSeccion('sec-insumos', this)"><span>📦</span>Insumos</div>
     </nav>
 
     <script>
-        // URL de tu API desplegada en Render (Reemplazar cuando esté lista)
         const API_URL = "https://chinis-burgers.onrender.com"; 
+        let chartTop, chartCat;
 
         function cambiarSeccion(idSeccion, el) {
             document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
@@ -240,51 +109,51 @@
             document.getElementById(idSeccion).classList.add('active');
             el.classList.add('active');
 
-            if (idSeccion === 'sec-insumos') cargarInsumos();
+            if (idSeccion === 'sec-dashboard') cargarDashboard();
             if (idSeccion === 'sec-ventas') cargarProductos();
         }
 
-        async function cargarInsumos() {
+        async function cargarDashboard() {
             try {
-                const res = await fetch(`${API_URL}/insumos`);
-                const insumos = await res.json();
-                let html = '';
-                insumos.forEach(i => {
-                    html += `
-                        <div class="list-item">
-                            <div>
-                                <strong>${i.nombre}</strong><br>
-                                <small>${i.cantidad_stock} ${i.unidad_medida}</small>
-                            </div>
-                            <div>$${i.costo_unitario.toFixed(2)}</div>
-                        </div>`;
+                const res = await fetch(`${API_URL}/stats/dashboard`);
+                const data = await res.json();
+
+                document.getElementById('kpi-monto').innerText = `$${data.ventas_hoy_monto.toFixed(2)}`;
+                document.getElementById('kpi-pedidos').innerText = data.ventas_hoy_cantidad;
+
+                // Gráfico Top Productos (Barras)
+                const ctxTop = document.getElementById('chartTopProductos').getContext('2d');
+                if (chartTop) chartTop.destroy();
+                chartTop = new Chart(ctxTop, {
+                    type: 'bar',
+                    data: {
+                        labels: data.top_productos.map(p => p.nombre),
+                        datasets: [{
+                            label: 'Unidades Vendidas',
+                            data: data.top_productos.map(p => p.cantidad),
+                            backgroundColor: '#e63946'
+                        }]
+                    },
+                    options: { responsive: true, plugins: { legend: { display: false } } }
                 });
-                document.getElementById('lista-insumos').innerHTML = html || 'No hay insumos registrados.';
+
+                // Gráfico Categorías (Torta)
+                const ctxCat = document.getElementById('chartCategorias').getContext('2d');
+                if (chartCat) chartCat.destroy();
+                chartCat = new Chart(ctxCat, {
+                    type: 'doughnut',
+                    data: {
+                        labels: data.top_categorias.map(c => c.categoria),
+                        datasets: [{
+                            data: data.top_categorias.map(c => c.cantidad),
+                            backgroundColor: ['#1d3557', '#e63946', '#2a9d8f', '#f4a261']
+                        }]
+                    },
+                    options: { responsive: true }
+                });
+
             } catch (e) {
-                console.error("Error al cargar insumos:", e);
-            }
-        }
-
-        async function guardarInsumo() {
-            const data = {
-                nombre: document.getElementById('ins-nombre').value,
-                unidad_medida: document.getElementById('ins-unidad').value,
-                cantidad_stock: parseFloat(document.getElementById('ins-stock').value),
-                costo_unitario: parseFloat(document.getElementById('ins-costo').value),
-                stock_minimo: 0
-            };
-
-            const res = await fetch(`${API_URL}/insumos`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data)
-            });
-
-            if (res.ok) {
-                alert("✅ Insumo guardado correctamente");
-                cargarInsumos();
-            } else {
-                alert("❌ Error al guardar insumo");
+                console.error("Error al cargar dashboard:", e);
             }
         }
 
@@ -301,12 +170,9 @@
                         </div>`;
                 });
                 document.getElementById('grid-productos').innerHTML = html || 'No hay productos creados.';
-            } catch (e) {
-                console.error("Error al cargar productos:", e);
-            }
+            } catch (e) { console.error(e); }
         }
 
-        // Cargar vista inicial
         cargarProductos();
     </script>
 </body>

@@ -187,52 +187,80 @@
                 const res = await fetch(`${API_URL}/insumos`);
                 const insumos = await res.json();
                 let html = '';
+
                 insumos.forEach(i => {
+                    const sinStock = i.cantidad_stock <= 0;
+                    const badgeStock = sinStock 
+                        ? `<span style="color: var(--danger); font-weight: bold;">⚠️ SIN STOCK (0 ${i.unidad_medida})</span>` 
+                        : `${i.cantidad_stock} ${i.unidad_medida}`;
+
                     html += `
-                        <div class="list-item">
+                        <div class="list-item" style="${sinStock ? 'background-color: #fff0f3; padding: 10px; border-radius: 8px;' : ''}">
                             <div>
                                 <strong>${i.nombre}</strong><br>
-                                <small>Stock: ${i.cantidad_stock} ${i.unidad_medida} | Costo: $${i.costo_unitario.toFixed(2)}/${i.unidad_medida}</small>
+                                <small>Stock Real: ${badgeStock}</small><br>
+                                <small style="color: #666;">Costo: $${i.costo_unitario.toFixed(2)} / ${i.unidad_medida}</small>
                             </div>
                             <div class="actions">
-                                <button class="btn-edit" onclick="editarInsumo(${i.id}, ${i.cantidad_stock}, ${i.costo_unitario})">✏️️</button>
-                                <button class="btn-danger" onclick="eliminarInsumo(${i.id}, '${i.nombre}')">🗑️</button>
+                                <button class="btn-edit" title="Ajustar Stock Real / Comprar" onclick="editarInsumo(${i.id}, '${i.nombre}', ${i.cantidad_stock}, ${i.costo_unitario})">✏ Editar</button>
+                                <button class="btn-danger" title="Eliminar" onclick="eliminarInsumo(${i.id}, '${i.nombre}')">🗑</button>
                             </div>
                         </div>`;
                 });
+
                 document.getElementById('lista-insumos').innerHTML = html || 'No hay insumos registrados.';
             } catch (e) { console.error("Error al cargar insumos:", e); }
         }
 
-        async function editarInsumo(id, stockActual, costoActual) {
-            // 1. Pregunta el stock actual
-            const nuevoStock = prompt("Nuevo Stock total disponible:", stockActual);
-            if (nuevoStock === null) return;
+        async function editarInsumo(id, nombre, stockActual, costoActual) {
+            const opcion = prompt(
+                `Elegí qué querés modificar de '${nombre}':\n\n` +
+                `1. Ajustar STOCK REAL que tenés hoy en cocina (ej: te quedan 18 kg)\n` +
+                `2. Actualizar PRECIO DE COMPRA (ej: compraste bolsa nueva más cara)`
+            );
 
-            // 2. Pregunta el precio de la bolsa/paquete
-            const precioPaquete = prompt("¿Cuánto te salió la última compra / bolsa? ($):");
-            if (precioPaquete === null) return;
+            if (opcion === "1") {
+                const nuevoStock = prompt(`¿Cuánto te queda HOY físicamente de '${nombre}' en la cocina?:`, stockActual);
+                if (nuevoStock === null) return;
 
-            // 3. Pregunta la cantidad que traía ese paquete (ej: 25 kg o 100 cajas)
-            const cantidadPaquete = prompt("¿De cuántos kg/unidades/litros era esa bolsa/paquete?:", 1);
-            if (cantidadPaquete === null) return;
+                const data = {
+                    cantidad_stock: parseFloat(nuevoStock),
+                    costo_unitario: costoActual
+                };
 
-            const cantNum = parseFloat(cantidadPaquete);
-            const precNum = parseFloat(precioPaquete);
+                enviarActualizaciónInsumo(id, data);
 
-            if (isNaN(cantNum) || cantNum <= 0 || isNaN(precNum)) {
-                alert("⚠️ Por favor ingresa números válidos para el precio y la cantidad.");
-                return;
+            } else if (opcion === "2") {
+                const precioPaquete = prompt("¿Cuánto te salió la nueva bolsa / compra? ($):");
+                if (precioPaquete === null) return;
+
+                const cantidadPaquete = prompt("¿De cuántos kg/unidades/litros era esa bolsa/compra?:", 1);
+                if (cantidadPaquete === null) return;
+
+                const cantNum = parseFloat(cantidadPaquete);
+                const precNum = parseFloat(precioPaquete);
+
+                if (isNaN(cantNum) || cantNum <= 0 || isNaN(precNum)) {
+                    alert("⚠️ Datos inválidos.");
+                    return;
+                }
+
+                const sumarStock = confirm("¿Querés SUMAR la cantidad de esta nueva bolsa al stock que ya tenías?");
+                
+                const nuevoStockFinal = sumarStock 
+                    ? stockActual + cantNum 
+                    : stockActual;
+
+                const data = {
+                    cantidad_stock: nuevoStockFinal,
+                    costo_unitario: precNum / cantNum
+                };
+
+                enviarActualizaciónInsumo(id, data);
             }
+        }
 
-            // Cálculo automático del costo por unidad de medida (ej: $/kg)
-            const nuevoCostoUnitario = precNum / cantNum;
-
-            const data = {
-                cantidad_stock: parseFloat(nuevoStock),
-                costo_unitario: nuevoCostoUnitario
-            };
-
+        async function enviarActualizaciónInsumo(id, data) {
             try {
                 const res = await fetch(`${API_URL}/insumos/${id}`, {
                     method: 'PUT',
@@ -241,14 +269,12 @@
                 });
 
                 if (res.ok) {
-                    alert(`✅ Insumo actualizado. Nuevo costo calculado: $${nuevoCostoUnitario.toFixed(2)} por unidad/kg`);
+                    alert("✅ Insumo actualizado correctamente");
                     cargarInsumos();
                 } else {
-                    alert("❌ Error al actualizar el insumo.");
+                    alert("❌ Error al actualizar");
                 }
-            } catch (e) {
-                console.error("Error al conectar con la API:", e);
-            }
+            } catch (e) { console.error(e); }
         }
 
         async function eliminarInsumo(id, nombre) {

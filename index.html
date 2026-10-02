@@ -755,70 +755,111 @@
             } catch (e) { console.error(e); }
         }
 
+        function parsearCantidadYUnidad(textoInput, unidadBase) {
+            if (!textoInput) return null;
+            let str = textoInput.toString().trim().toLowerCase();
+
+            // Si termina en 'g' (gramos)
+            if (str.endsWith('g') && !str.endsWith('kg')) {
+                let val = parseFloat(str.replace('g', ''));
+                return isNaN(val) ? null : val / 1000.0; // Convierte gramos a kilos
+            }
+            // Si termina en 'kg'
+            if (str.endsWith('kg')) {
+                let val = parseFloat(str.replace('kg', ''));
+                return isNaN(val) ? null : val;
+            }
+            // Si termina en 'ml'
+            if (str.endsWith('ml')) {
+                let val = parseFloat(str.replace('ml', ''));
+                return isNaN(val) ? null : val / 1000.0; // Convierte ml a litros
+            }
+            // Si termina en 'l'
+            if (str.endsWith('l')) {
+                let val = parseFloat(str.replace('l', ''));
+                return isNaN(val) ? null : val;
+            }
+            // Si termina en 'un'
+            if (str.endsWith('un')) {
+                let val = parseFloat(str.replace('un', ''));
+                return isNaN(val) ? null : val;
+            }
+
+            // Si ingresó solo un número sin letras:
+            let num = parseFloat(str);
+            if (isNaN(num)) return null;
+
+            // Si el insumo base es kg/l y puso un número >= 100 (ej: 250), asume que son gramos/ml
+            if ((unidadBase === 'kg' || unidadBase === 'l') && num >= 100) {
+                return num / 1000.0;
+            }
+
+            return num;
+        }        
+
         async function editarInsumo(id, nombre, stockActual, costoActual, unidadMedida) {
             const opcion = prompt(
-                `Elegí qué querés hacer con '${nombre}':\n\n` +
-                `1. Ajustar STOCK REAL exacto que tenés hoy en cocina\n` +
-                `2. Cargar NUEVA COMPRA (Sumar paquete/bolsa nuevo)`
+                `Elegí una opción para '${nombre}':\n\n` +
+                `1. Ajustar stock (Inventario real hoy)\n` +
+                `2. Agregar stock (Sumar compra: ej. 1kg, 250g, 1L, 10ml, 1un)\n` +
+                `3. Modificar precio ($ por ${unidadMedida})`
             );
 
             if (opcion === "1") {
-                let nuevoStock = prompt(`¿Cuánto te queda HOY de '${nombre}' en cocina? (${unidadMedida}):`, stockActual);
-                if (nuevoStock === null) return;
-                
-                let stockNum = parseFloat(nuevoStock);
-                if (isNaN(stockNum)) return;
+                // --- OPCIÓN 1: AJUSTAR STOCK ---
+                const inputStock = prompt(`Ingresá el stock REAL actual de '${nombre}' (ej: 250g, 1.5kg, 5un):`, `${stockActual}${unidadMedida}`);
+                if (inputStock === null) return;
 
-                // Si pones 250 en un insumo medido en kg/l, convierte a 0.25
-                if ((unidadMedida === 'kg' || unidadMedida === 'l') && stockNum >= 100) {
-                    stockNum = stockNum / 1000;
+                const nuevoStock = parsearCantidadYUnidad(inputStock, unidadMedida);
+                if (nuevoStock === null) {
+                    showToast("⚠️ Cantidad no válida", true);
+                    return;
                 }
 
-                enviarActualizaciónInsumo(id, { cantidad_stock: stockNum, costo_unitario: costoActual });
+                enviarActualizaciónInsumo(id, { cantidad_stock: nuevoStock, costo_unitario: costoActual });
+                showToast(`✅ Stock de ${nombre} ajustado a ${nuevoStock} ${unidadMedida}`);
 
             } else if (opcion === "2") {
-                const precioPaquete = prompt("¿Cuánto te salió la nueva compra / paquete? ($):");
-                if (precioPaquete === null) return;
+                // --- OPCIÓN 2: AGREGAR STOCK ---
+                const inputCantidad = prompt(`¿Cuánto compraste/agregaste de '${nombre}'? (ej: 250g, 1kg, 500ml, 2L, 5un):`);
+                if (inputCantidad === null) return;
 
-                let cantidadPaquete = prompt(`¿De cuántos ${unidadMedida} (o gramos si es <1kg) era esa compra?:`, 1);
-                if (cantidadPaquete === null) return;
-
-                let cantNum = parseFloat(cantidadPaquete);
-                const precNum = parseFloat(precioPaquete);
-
-                if (isNaN(cantNum) || cantNum <= 0 || isNaN(precNum)) return;
-
-                // Conversión inteligente de gramos a kilos si ingresas >= 100 en insumos de kg/l
-                if ((unidadMedida === 'kg' || unidadMedida === 'l') && cantNum >= 100) {
-                    cantNum = cantNum / 1000;
+                const cantidadIngresada = parsearCantidadYUnidad(inputCantidad, unidadMedida);
+                if (cantidadIngresada === null || cantidadIngresada <= 0) {
+                    showToast("⚠️ Cantidad ingresada no válida", true);
+                    return;
                 }
 
-                // Sumamos al stock existente
-                const nuevoStockFinal = stockActual + cantNum;
-                const nuevoCostoUnitario = precNum / cantNum;
+                const inputPrecio = prompt(`¿Cuánto te salió en total esa compra de ${inputCantidad}? ($):`);
+                if (inputPrecio === null) return;
+
+                const precioPagado = parseFloat(inputPrecio);
+                if (isNaN(precioPagado) || precioPagado < 0) {
+                    showToast("⚠️ Precio no válido", true);
+                    return;
+                }
+
+                const nuevoStockFinal = stockActual + cantidadIngresada;
+                // Calcular el nuevo costo por unidad estándar (kg, l, un)
+                const nuevoCostoUnitario = precioPagado / cantidadIngresada;
 
                 enviarActualizaciónInsumo(id, { cantidad_stock: nuevoStockFinal, costo_unitario: nuevoCostoUnitario });
-                showToast(`✅ Se sumaron ${cantNum} ${unidadMedida} a ${nombre}`);
+                showToast(`✅ Se sumaron ${cantidadIngresada} ${unidadMedida} a ${nombre}`);
+
+            } else if (opcion === "3") {
+                // --- OPCIÓN 3: MODIFICAR PRECIO ---
+                const inputPrecioNuevo = prompt(`Ingresá el nuevo costo por ${unidadMedida} de '${nombre}':`, costoActual);
+                if (inputPrecioNuevo === null) return;
+
+                const nuevoPrecio = parseFloat(inputPrecioNuevo);
+                if (isNaN(nuevoPrecio) || nuevoPrecio < 0) {
+                    showToast("⚠️ Precio no válido", true);
+                    return;
+                }
+
+                enviarActualizaciónInsumo(id, { cantidad_stock: stockActual, costo_unitario: nuevoPrecio });
+                showToast(`✅ Precio de ${nombre} actualizado a $${nuevoPrecio} / ${unidadMedida}`);
             }
-        }
-
-        async function enviarActualizaciónInsumo(id, data) {
-            try {
-                const res = await fetch(`${API_URL}/insumos/${id}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
-                });
-                if (res.ok) { showToast("✅ Insumo actualizado"); cargarInsumos(); }
-            } catch (e) { console.error(e); }
-        }
-
-        async function eliminarInsumo(id, nombre) {
-            if (!confirm(`¿Seguro que deseas eliminar '${nombre}'?`)) return;
-            try {
-                const res = await fetch(`${API_URL}/insumos/${id}`, { method: 'DELETE' });
-                if (res.ok) { showToast("🗑 Insumo eliminado"); cargarInsumos(); }
-            } catch (e) { console.error(e); }
         }
 
         async function cargarDashboard() {

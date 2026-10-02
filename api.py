@@ -79,12 +79,9 @@ def crear_o_actualizar_insumo(insumo: InsumoCreate, db: Session = Depends(get_db
     
     cantidad_real = insumo.cantidad_comprada
 
-    # Conversión automática: Si el insumo se mide en kg/l y pones >= 1 (ej: 250 g), convierte a 0.25 kg
-    if (insumo.unidad_medida == 'kg' or insumo.unidad_medida == 'l') and cantidad_real >= 1:
-        # Si pones un valor como 250 en un insumo kg, asumimos que son gramos (0.25 kg)
-        # Excepto si la compra es verdaderamente mayor a 50 kg para bolsas gigantes
-        if cantidad_real >= 100:
-            cantidad_real = cantidad_real / 1000.0
+    # Conversión automática: Si la unidad es 'kg' o 'l' e ingresas >= 100 (ej: 250 g), convierte a 0.25 kg/l
+    if (insumo.unidad_medida == 'kg' or insumo.unidad_medida == 'l') and cantidad_real >= 100:
+        cantidad_real = cantidad_real / 1000.0
 
     costo_unitario = insumo.precio_total / cantidad_real
 

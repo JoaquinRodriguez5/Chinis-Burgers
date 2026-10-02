@@ -686,7 +686,7 @@
                 return;
             }
 
-            // Conversión inteligente si compras condimentos en gramos (ej: 250 g en insumo kg)
+            // Si el insumo está en 'kg' o 'l' y pones 100 o más (ej: 250 g), convierte a 0.25 kg
             if ((unidad === 'kg' || unidad === 'l') && cantidad >= 100) {
                 cantidad = cantidad / 1000;
             }
@@ -707,7 +707,7 @@
                 });
 
                 if (res.ok) {
-                    showToast(`✅ Insumo '${nombre}' cargado / actualizado`);
+                    showToast(`✅ Insumo '${nombre}' guardado`);
                     document.getElementById('ins-nombre').value = '';
                     document.getElementById('ins-cantidad').value = '';
                     document.getElementById('ins-precio').value = '';
@@ -724,7 +724,7 @@
 
                 insumos.forEach(i => {
                     const sinStock = i.cantidad_stock <= 0;
-                    const stockBajo = i.cantidad_stock > 0 && i.cantidad_stock <= 2; // Alerta si queda 2 kg/un o menos
+                    const stockBajo = i.cantidad_stock > 0 && i.cantidad_stock <= 2;
 
                     let styleBg = '';
                     let badgeStock = `${i.cantidad_stock.toFixed(2)} ${i.unidad_medida}`;
@@ -745,7 +745,7 @@
                                 <small style="color: #666;">Costo: $${i.costo_unitario.toFixed(2)} / ${i.unidad_medida}</small>
                             </div>
                             <div class="actions">
-                                <button class="btn-edit" onclick="editarInsumo(${i.id}, '${i.nombre}', ${i.cantidad_stock}, ${i.costo_unitario})">✏ Edit</button>
+                                <button class="btn-edit" onclick="editarInsumo(${i.id}, '${i.nombre}', ${i.cantidad_stock}, ${i.costo_unitario}, '${i.unidad_medida}')">✏ Edit</button>
                                 <button class="btn-danger" onclick="eliminarInsumo(${i.id}, '${i.nombre}')">🗑</button>
                             </div>
                         </div>`;
@@ -755,23 +755,32 @@
             } catch (e) { console.error(e); }
         }
 
-        async function editarInsumo(id, nombre, stockActual, costoActual) {
+        async function editarInsumo(id, nombre, stockActual, costoActual, unidadMedida) {
             const opcion = prompt(
                 `Elegí qué querés hacer con '${nombre}':\n\n` +
                 `1. Ajustar STOCK REAL exacto que tenés hoy en cocina\n` +
-                `2. Cargar NUEVA COMPRA (sumar bolsa/paquete nuevo)`
+                `2. Cargar NUEVA COMPRA (Sumar paquete/bolsa nuevo)`
             );
 
             if (opcion === "1") {
-                const nuevoStock = prompt(`¿Cuánto te queda HOY de '${nombre}' en cocina?:`, stockActual);
+                let nuevoStock = prompt(`¿Cuánto te queda HOY de '${nombre}' en cocina? (${unidadMedida}):`, stockActual);
                 if (nuevoStock === null) return;
-                enviarActualizaciónInsumo(id, { cantidad_stock: parseFloat(nuevoStock), costo_unitario: costoActual });
+                
+                let stockNum = parseFloat(nuevoStock);
+                if (isNaN(stockNum)) return;
+
+                // Si pones 250 en un insumo medido en kg/l, convierte a 0.25
+                if ((unidadMedida === 'kg' || unidadMedida === 'l') && stockNum >= 100) {
+                    stockNum = stockNum / 1000;
+                }
+
+                enviarActualizaciónInsumo(id, { cantidad_stock: stockNum, costo_unitario: costoActual });
 
             } else if (opcion === "2") {
                 const precioPaquete = prompt("¿Cuánto te salió la nueva compra / paquete? ($):");
                 if (precioPaquete === null) return;
 
-                let cantidadPaquete = prompt("¿De cuántos kg/g/unidades era esa compra? (ej: 25 para kg o 250 para g):", 1);
+                let cantidadPaquete = prompt(`¿De cuántos ${unidadMedida} (o gramos si es <1kg) era esa compra?:`, 1);
                 if (cantidadPaquete === null) return;
 
                 let cantNum = parseFloat(cantidadPaquete);
@@ -779,16 +788,17 @@
 
                 if (isNaN(cantNum) || cantNum <= 0 || isNaN(precNum)) return;
 
-                // Si pone 250 en un insumo medido en kg, lo convierte a 0.25 kg
-                if (cantNum >= 100) {
+                // Conversión inteligente de gramos a kilos si ingresas >= 100 en insumos de kg/l
+                if ((unidadMedida === 'kg' || unidadMedida === 'l') && cantNum >= 100) {
                     cantNum = cantNum / 1000;
                 }
 
+                // Sumamos al stock existente
                 const nuevoStockFinal = stockActual + cantNum;
                 const nuevoCostoUnitario = precNum / cantNum;
 
                 enviarActualizaciónInsumo(id, { cantidad_stock: nuevoStockFinal, costo_unitario: nuevoCostoUnitario });
-                showToast(`✅ Se sumaron ${cantNum} al stock de ${nombre}. Stock actual: ${nuevoStockFinal}`);
+                showToast(`✅ Se sumaron ${cantNum} ${unidadMedida} a ${nombre}`);
             }
         }
 

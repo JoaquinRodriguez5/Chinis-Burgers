@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chinis Burgers - POS & Recetas</title>
+    <title>Chinis Burgers - POS & Calendario</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
@@ -55,8 +55,10 @@
         .receta-row select { flex: 2; }
         .receta-row input { flex: 1; }
 
+        .venta-ticket { background: #f1f3f5; border-left: 4px solid var(--primary); padding: 10px; margin-bottom: 10px; border-radius: 6px; }
+
         nav { position: fixed; bottom: 0; left: 0; right: 0; background: white; display: flex; justify-content: space-around; border-top: 1px solid #ddd; padding: 10px 0; }
-        nav div { text-align: center; font-size: 0.8rem; color: #666; cursor: pointer; }
+        nav div { text-align: center; font-size: 0.75rem; color: #666; cursor: pointer; }
         nav div.active { color: var(--primary); font-weight: bold; }
         nav div span { display: block; font-size: 1.2rem; }
     </style>
@@ -66,11 +68,44 @@
     <header>🍔 Chinis Burgers POS</header>
 
     <div class="container">
-        <!-- VISTA DE VENTAS -->
+        <!-- VISTA DE VENTAS (POS) -->
         <div id="sec-ventas" class="section active">
             <h2>Registrar Venta Rápidamente</h2>
             <div id="grid-productos" class="grid-productos"></div>
             <button class="btn-success" style="margin-top: 15px;" onclick="procesarVenta()">Confirmar y Cobrar</button>
+        </div>
+
+        <!-- VISTA DE CALENDARIO Y HISTORIAL DE VENTAS -->
+        <div id="sec-calendario" class="section">
+            <div class="card">
+                <h2>📅 Historial por Fecha</h2>
+                <label>Seleccionar Fecha</label>
+                <input type="date" id="cal-fecha" onchange="cargarVentasPorFecha()">
+                
+                <div style="margin-top: 15px; background: var(--secondary); color: white; padding: 12px; border-radius: 8px; text-align: center;">
+                    <small>TOTAL VENDIDO EL DÍA ELEGIDO:</small>
+                    <div id="cal-total-dia" style="font-size: 1.4rem; font-weight: bold;">$0.00</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Ventas del Día</h2>
+                <div id="cal-lista-ventas"></div>
+            </div>
+
+            <div class="card">
+                <h2>➕ Cargar Venta Manual (Fecha pasada)</h2>
+                <label>Producto</label>
+                <select id="manual-prod-id"></select>
+
+                <label>Cantidad</label>
+                <input type="number" id="manual-cant" value="1" min="1">
+
+                <label>Fecha y Hora</label>
+                <input type="datetime-local" id="manual-fecha-hora">
+
+                <button class="btn-success" onclick="cargarVentaManual()">Registrar Venta Pasada</button>
+            </div>
         </div>
 
         <!-- VISTA DE CREAR Y EDITAR PRODUCTOS / RECETAS -->
@@ -93,7 +128,7 @@
                 <label>Precio de Venta ($)</label>
                 <input type="number" id="prod-precio" placeholder="Ej: 8500">
 
-                <label>Ingredientes / Receta (Aclara la cantidad utilizada)</label>
+                <label>Ingredientes / Receta</label>
                 <div id="receta-container"></div>
                 <button type="button" style="background: #6c757d; margin-top: 5px;" onclick="agregarFilaReceta()">+ Agregar Ingrediente</button>
 
@@ -167,6 +202,7 @@
     <!-- NAVEGACIÓN -->
     <nav>
         <div class="nav-item active" onclick="cambiarSeccion('sec-ventas', this)"><span>🛒</span>Vender</div>
+        <div class="nav-item" onclick="cambiarSeccion('sec-calendario', this)"><span>📅</span>Calendario</div>
         <div class="nav-item" onclick="cambiarSeccion('sec-productos', this)"><span>🍕</span>Productos</div>
         <div class="nav-item" onclick="cambiarSeccion('sec-dashboard', this)"><span>📈</span>Dashboard</div>
         <div class="nav-item" onclick="cambiarSeccion('sec-insumos', this)"><span>📦</span>Insumos</div>
@@ -189,13 +225,102 @@
             if (idSeccion === 'sec-insumos') cargarInsumos();
             if (idSeccion === 'sec-ventas') cargarProductos();
             if (idSeccion === 'sec-productos') prepararFormularioProductos();
+            if (idSeccion === 'sec-calendario') inicializarCalendario();
+        }
+
+        function inicializarCalendario() {
+            // Establecer fecha de hoy por defecto en el selector
+            const hoy = new Date().toISOString().split('T')[0];
+            document.getElementById('cal-fecha').value = hoy;
+            cargarVentasPorFecha();
+            prepararFormularioVentaManual();
+        }
+
+        async function cargarVentasPorFecha() {
+            const fecha = document.getElementById('cal-fecha').value;
+            if (!fecha) return;
+
+            try {
+                const res = await fetch(`${API_URL}/ventas/dia/${fecha}`);
+                const data = await res.json();
+
+                document.getElementById('cal-total-dia').innerText = `$${data.total_dia.toFixed(2)}`;
+                let html = '';
+
+                data.ventas.forEach(v => {
+                    let itemsStr = v.items.map(i => `${i.cantidad}x ${i.producto_nombre} ($${i.subtotal.toFixed(2)})`).join(', ');
+
+                    html += `
+                        <div class="venta-ticket">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <strong>Ticket #${v.id} - ${v.fecha_hora} hs</strong>
+                                <button class="btn-danger" style="font-size: 0.75rem;" onclick="eliminarVenta(${v.id})">🗑 Eliminar</button>
+                            </div>
+                            <div style="margin-top: 5px; font-size: 0.85rem; color: #555;">${itemsStr}</div>
+                            <div style="margin-top: 5px; font-weight: bold; color: var(--secondary);">Total: $${v.total.toFixed(2)}</div>
+                        </div>`;
+                });
+
+                document.getElementById('cal-lista-ventas').innerHTML = html || 'No hay ventas registradas en esta fecha.';
+            } catch (e) { console.error(e); }
+        }
+
+        async function eliminarVenta(id) {
+            const devolver = confirm("¿Deseas devolver los insumos de esta venta al stock?");
+            try {
+                const res = await fetch(`${API_URL}/ventas/${id}?devolver_stock=${devolver}`, { method: 'DELETE' });
+                if (res.ok) {
+                    alert("🗑️️ Venta eliminada correctamente");
+                    cargarVentasPorFecha();
+                }
+            } catch (e) { console.error(e); }
+        }
+
+        async function prepararFormularioVentaManual() {
+            try {
+                const res = await fetch(`${API_URL}/productos`);
+                const productos = await res.json();
+                let options = '';
+                productos.forEach(p => {
+                    options += `<option value="${p.id}">${p.nombre} ($${p.precio_venta.toFixed(2)})</option>`;
+                });
+                document.getElementById('manual-prod-id').innerHTML = options;
+            } catch (e) { console.error(e); }
+        }
+
+        async function cargarVentaManual() {
+            const prodId = parseInt(document.getElementById('manual-prod-id').value);
+            const cantidad = parseInt(document.getElementById('manual-cant').value);
+            const fechaHora = document.getElementById('manual-fecha-hora').value;
+
+            if (!prodId || isNaN(cantidad) || cantidad <= 0 || !fechaHora) {
+                alert("⚠️ Por favor completa el producto, cantidad y fecha/hora.");
+                return;
+            }
+
+            const data = {
+                items: [{ producto_id: prodId, cantidad: cantidad }],
+                fecha_custom: fechaHora
+            };
+
+            try {
+                const res = await fetch(`${API_URL}/ventas`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                if (res.ok) {
+                    alert("✅ Venta manual registrada con éxito");
+                    cargarVentasPorFecha();
+                }
+            } catch (e) { console.error(e); }
         }
 
         async function prepararFormularioProductos() {
             try {
                 const resInsumos = await fetch(`${API_URL}/insumos`);
                 listaInsumosGlobal = await resInsumos.json();
-                
                 resetFormProducto();
                 cargarListaProductosConfig();
             } catch (e) { console.error(e); }
@@ -224,7 +349,7 @@
 
             div.innerHTML = `
                 <select class="receta-insumo-id">${options}</select>
-                <input type="number" class="receta-cantidad" step="0.001" value="${cantidad}" placeholder="Cant (ej: 250 si es g)">
+                <input type="number" class="receta-cantidad" step="0.001" value="${cantidad}" placeholder="Cant (ej: 250 g)">
             `;
             container.appendChild(div);
         }
@@ -252,25 +377,15 @@
                     const selectedOption = selectEl.options[selectEl.selectedIndex];
                     const unidadMedida = selectedOption.getAttribute('data-unidad');
 
-                    // Conversión automática: Si el insumo está registrado en kg/l y colocas > 1 (ej: 250 g), se convierte a kg/l (0.25)
                     if ((unidadMedida === 'kg' || unidadMedida === 'l') && cantidad >= 1) {
                         cantidad = cantidad / 1000;
                     }
 
-                    receta.push({
-                        insumo_id: parseInt(insumoId),
-                        cantidad_utilizada: cantidad
-                    });
+                    receta.push({ insumo_id: parseInt(insumoId), cantidad_utilizada: cantidad });
                 }
             });
 
-            const data = {
-                nombre: nombre,
-                categoria: categoria,
-                precio_venta: precio,
-                receta: receta
-            };
-
+            const data = { nombre: nombre, categoria: categoria, precio_venta: precio, receta: receta };
             const url = prodId ? `${API_URL}/productos/${prodId}` : `${API_URL}/productos/con-receta`;
             const method = prodId ? 'PUT' : 'POST';
 
@@ -282,10 +397,8 @@
                 });
 
                 if (res.ok) {
-                    alert(`✅ Producto '${nombre}' guardado correctamente.`);
+                    alert(`✅ Producto '${nombre}' guardado.`);
                     prepararFormularioProductos();
-                } else {
-                    alert("❌ Error al guardar producto.");
                 }
             } catch (e) { console.error(e); }
         }
@@ -300,16 +413,8 @@
                     let recetaText = p.receta.map(r => {
                         let cant = r.cantidad_utilizada;
                         let unidad = r.unidad_medida;
-
-                        // Conversión inteligente para la vista de cocina
-                        if (unidad === 'kg' && cant < 1) {
-                            cant = Math.round(cant * 1000);
-                            unidad = 'g';
-                        } else if (unidad === 'l' && cant < 1) {
-                            cant = Math.round(cant * 1000);
-                            unidad = 'ml';
-                        }
-
+                        if (unidad === 'kg' && cant < 1) { cant = Math.round(cant * 1000); unidad = 'g'; } 
+                        else if (unidad === 'l' && cant < 1) { cant = Math.round(cant * 1000); unidad = 'ml'; }
                         return `${cant} ${unidad} de ${r.insumo_nombre}`;
                     }).join(', ');
 
@@ -317,7 +422,7 @@
                         <div class="list-item">
                             <div>
                                 <strong>${p.nombre}</strong> ($${p.precio_venta.toFixed(2)})<br>
-                                <small style="color: #666;">Receta: ${recetaText || 'Sin ingredientes asignados'}</small>
+                                <small style="color: #666;">Receta: ${recetaText || 'Sin ingredientes'}</small>
                             </div>
                             <div class="actions">
                                 <button class="btn-edit" onclick="editarProducto(${p.id})">✏ Edit</button>
@@ -346,7 +451,6 @@
                 agregarFilaReceta();
             } else {
                 p.receta.forEach(r => {
-                    // Muestra el valor en g/ml para fácil lectura si era decimal menor a 1
                     let cantDisplay = r.cantidad_utilizada;
                     if ((r.unidad_medida === 'kg' || r.unidad_medida === 'l') && r.cantidad_utilizada < 1) {
                         cantDisplay = r.cantidad_utilizada * 1000;
@@ -359,13 +463,9 @@
 
         async function eliminarProducto(id, nombre) {
             if (!confirm(`¿Eliminar '${nombre}' y su receta?`)) return;
-
             try {
                 const res = await fetch(`${API_URL}/productos/${id}`, { method: 'DELETE' });
-                if (res.ok) {
-                    alert("🗑️ Producto eliminado");
-                    prepararFormularioProductos();
-                }
+                if (res.ok) { alert("🗑️ Producto eliminado"); prepararFormularioProductos(); }
             } catch (e) { console.error(e); }
         }
 
@@ -390,13 +490,12 @@
                             </div>
                         </div>`;
                 });
-                document.getElementById('grid-productos').innerHTML = html || 'No hay productos creados. Ve a 🍕 Productos para crear uno.';
+                document.getElementById('grid-productos').innerHTML = html || 'No hay productos creados.';
             } catch (e) { console.error(e); }
         }
 
         function modificarCantidadVenta(id, cambio) {
             if (!productosSeleccionados[id]) productosSeleccionados[id] = 0;
-            
             productosSeleccionados[id] += cambio;
             if (productosSeleccionados[id] < 0) productosSeleccionados[id] = 0;
 
@@ -404,29 +503,19 @@
             const card = document.getElementById(`prod-card-${id}`);
 
             if (qtySpan) qtySpan.innerText = productosSeleccionados[id];
-            
-            if (productosSeleccionados[id] > 0) {
-                card.classList.add('selected');
-            } else {
-                card.classList.remove('selected');
-            }
+            if (productosSeleccionados[id] > 0) card.classList.add('selected');
+            else card.classList.remove('selected');
         }
 
         async function procesarVenta() {
             const items = [];
             for (let id in productosSeleccionados) {
                 if (productosSeleccionados[id] > 0) {
-                    items.push({
-                        producto_id: parseInt(id),
-                        cantidad: productosSeleccionados[id]
-                    });
+                    items.push({ producto_id: parseInt(id), cantidad: productosSeleccionados[id] });
                 }
             }
 
-            if (items.length === 0) {
-                alert("⚠️ Selecciona al menos un producto para vender.");
-                return;
-            }
+            if (items.length === 0) { alert("⚠️ Selecciona al menos un producto."); return; }
 
             try {
                 const res = await fetch(`${API_URL}/ventas`, {
@@ -437,11 +526,9 @@
 
                 if (res.ok) {
                     const data = await res.json();
-                    alert(`🎉 ¡Venta realizada! Total cobrado: $${data.total.toFixed(2)}`);
+                    alert(`🎉 ¡Venta realizada! Total: $${data.total.toFixed(2)}`);
                     productosSeleccionados = {};
                     cargarProductos();
-                } else {
-                    alert("❌ Error al procesar la venta.");
                 }
             } catch (e) { console.error(e); }
         }
@@ -452,18 +539,9 @@
             const unidad = document.getElementById('ins-unidad').value;
             const precio = parseFloat(document.getElementById('ins-precio').value);
 
-            if (!nombre || isNaN(cantidad) || isNaN(precio)) {
-                alert("⚠️ Completa los campos correctamente.");
-                return;
-            }
+            if (!nombre || isNaN(cantidad) || isNaN(precio)) { alert("⚠️ Completa los campos."); return; }
 
-            const data = {
-                nombre: nombre,
-                unidad_medida: unidad,
-                cantidad_comprada: cantidad,
-                precio_total: precio,
-                stock_minimo: 0
-            };
+            const data = { nombre: nombre, unidad_medida: unidad, cantidad_comprada: cantidad, precio_total: precio, stock_minimo: 0 };
 
             try {
                 const res = await fetch(`${API_URL}/insumos`, {
@@ -478,8 +556,6 @@
                     document.getElementById('ins-cantidad').value = '';
                     document.getElementById('ins-precio').value = '';
                     cargarInsumos();
-                } else {
-                    alert("❌ Error al guardar insumo.");
                 }
             } catch (e) { console.error(e); }
         }
@@ -515,28 +591,20 @@
         }
 
         async function editarInsumo(id, nombre, stockActual, costoActual) {
-            const opcion = prompt(
-                `Elegí qué querés modificar de '${nombre}':\n\n` +
-                `1. Ajustar STOCK REAL que tenés hoy en cocina\n` +
-                `2. Actualizar PRECIO DE COMPRA`
-            );
+            const opcion = prompt(`Elegí qué querés modificar de '${nombre}':\n\n1. Ajustar STOCK REAL\n2. Actualizar PRECIO DE COMPRA`);
 
             if (opcion === "1") {
-                const nuevoStock = prompt(`¿Cuánto te queda HOY de '${nombre}' en la cocina?:`, stockActual);
+                const nuevoStock = prompt(`¿Cuánto te queda HOY de '${nombre}'?:`, stockActual);
                 if (nuevoStock === null) return;
-
                 enviarActualizaciónInsumo(id, { cantidad_stock: parseFloat(nuevoStock), costo_unitario: costoActual });
-
             } else if (opcion === "2") {
                 const precioPaquete = prompt("¿Cuánto te salió la nueva compra? ($):");
                 if (precioPaquete === null) return;
-
                 const cantidadPaquete = prompt("¿De cuántos kg/unidades era?:", 1);
                 if (cantidadPaquete === null) return;
 
                 const cantNum = parseFloat(cantidadPaquete);
                 const precNum = parseFloat(precioPaquete);
-
                 if (isNaN(cantNum) || cantNum <= 0 || isNaN(precNum)) return;
 
                 const sumarStock = confirm("¿Querés SUMAR la cantidad al stock que ya tenías?");
@@ -553,27 +621,15 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)
                 });
-
-                if (res.ok) {
-                    alert("✅ Insumo actualizado");
-                    cargarInsumos();
-                } else {
-                    alert("❌ Error al actualizar");
-                }
+                if (res.ok) { alert("✅ Insumo actualizado"); cargarInsumos(); }
             } catch (e) { console.error(e); }
         }
 
         async function eliminarInsumo(id, nombre) {
             if (!confirm(`¿Seguro que deseas eliminar '${nombre}'?`)) return;
-
             try {
                 const res = await fetch(`${API_URL}/insumos/${id}`, { method: 'DELETE' });
-                if (res.ok) {
-                    alert("🗑️ Insumo eliminado");
-                    cargarInsumos();
-                } else {
-                    alert("❌ Error al eliminar");
-                }
+                if (res.ok) { alert("🗑️ Insumo eliminado"); cargarInsumos(); }
             } catch (e) { console.error(e); }
         }
 
@@ -591,11 +647,7 @@
                     type: 'bar',
                     data: {
                         labels: data.top_productos.map(p => p.nombre),
-                        datasets: [{
-                            label: 'Unidades Vendidas',
-                            data: data.top_productos.map(p => p.cantidad),
-                            backgroundColor: '#e63946'
-                        }]
+                        datasets: [{ label: 'Unidades Vendidas', data: data.top_productos.map(p => p.cantidad), backgroundColor: '#e63946' }]
                     },
                     options: { responsive: true, plugins: { legend: { display: false } } }
                 });
@@ -606,10 +658,7 @@
                     type: 'doughnut',
                     data: {
                         labels: data.top_categorias.map(c => c.categoria),
-                        datasets: [{
-                            data: data.top_categorias.map(c => c.cantidad),
-                            backgroundColor: ['#1d3557', '#e63946', '#2a9d8f', '#f4a261']
-                        }]
+                        datasets: [{ data: data.top_categorias.map(c => c.cantidad), backgroundColor: ['#1d3557', '#e63946', '#2a9d8f', '#f4a261'] }]
                     },
                     options: { responsive: true }
                 });

@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from pydantic import BaseModel
 from typing import List, Optional
-from datetime import datetime, time
+from datetime import datetime, time, date
 
 from database import (
     get_db, init_db, 
@@ -55,6 +55,7 @@ class ItemVenta(BaseModel):
 
 class RegistrarVenta(BaseModel):
     items: List[ItemVenta]
+    fecha_custom: Optional[str] = None  # Formato YYYY-MM-DD THH:MM por si cargás venta pasada
 
 
 # ==========================================
@@ -178,7 +179,6 @@ def actualizar_producto_con_receta(producto_id: int, producto_data: ProductoConR
     producto.categoria = producto_data.categoria
     producto.precio_venta = producto_data.precio_venta
 
-    # Reemplazar la receta
     db.query(RecetaModel).filter(RecetaModel.producto_id == producto_id).delete()
 
     for item in producto_data.receta:
@@ -205,7 +205,7 @@ def eliminar_producto(producto_id: int, db: Session = Depends(get_db)):
 
 
 # ==========================================
-# ENDPOINTS - VENTAS Y DESCUENTO DE STOCK
+# ENDPOINTS - VENTAS, CALENDARIO Y HISTORIAL
 # ==========================================
 
 @app.post("/ventas")
@@ -213,8 +213,15 @@ def registrar_venta(venta_data: RegistrarVenta, db: Session = Depends(get_db)):
     if not venta_data.items:
         raise HTTPException(status_code=400, detail="Debe seleccionar al menos un producto")
 
+    fecha_venta = datetime.utcnow()
+    if venta_data.fecha_custom:
+        try:
+            fecha_venta = datetime.fromisoformat(venta_data.fecha_custom)
+        except Exception:
+            pass
+
     total_venta = 0.0
-    nueva_venta = VentaModel(fecha=datetime.utcnow(), total=0.0)
+    nueva_venta = VentaModel(fecha=fecha_venta, total=0.0)
     db.add(nueva_venta)
     db.commit()
     db.refresh(nueva_venta)
@@ -235,6 +242,7 @@ def registrar_venta(venta_data: RegistrarVenta, db: Session = Depends(get_db)):
         )
         db.add(detalle)
 
+        # Descontar stock
         recetas = db.query(RecetaModel).filter(RecetaModel.producto_id == producto.id).all()
         for r in recetas:
             insumo = db.query(InsumoModel).filter(InsumoModel.id == r.insumo_id).first()
@@ -244,6 +252,72 @@ def registrar_venta(venta_data: RegistrarVenta, db: Session = Depends(get_db)):
     nueva_venta.total = total_venta
     db.commit()
     return {"status": "ok", "venta_id": nueva_venta.id, "total": total_venta}
+
+@app.get("/ventas/dia/{fecha_str}")
+def obtener_ventas_por_fecha(fecha_str: str, db: Session = Depends(get_db)):
+    """Obtiene el desglose de ventas para una fecha específica (YYYY-MM-DD)."""
+    try:
+        fecha_target = datetime.strptime(fecha_str, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Formato de fecha inválido. Usar YYYY-MM-DD")
+
+    inicio_dia = datetime.combine(fecha_target, time.min)
+    fin_dia = datetime.combine(fecha_target, time.max)
+
+    ventas = db.query(VentaModel).filter(VentaModel.fecha >= inicio_dia, VentaModel.fecha <= fin_dia).order_by(VentaModel.fecha.desc()).all()
+    
+    resultado = []
+    total_dia = 0.0
+
+    for v in ventas:
+        detalles = db.query(VentaDetalleModel, ProductoModel)\
+            .join(ProductoModel, VentaDetalleModel.producto_id == ProductoModel.id)\
+            .filter(VentaDetalleModel.venta_id == v.id).all()
+
+        items_list = []
+        for d, p in detalles:
+            items_list.append({
+                "producto_nombre": p.nombre,
+                "cantidad": d.cantidad,
+                "precio_unitario": d.precio_unitario,
+                "subtotal": d.cantidad * d.precio_unitario
+            })
+
+        total_dia += v.total
+        resultado.append({
+            "id": v.id,
+            "fecha_hora": v.fecha.strftime("%H:%M"),
+            "total": v.total,
+            "items": items_list
+        })
+
+    return {
+        "fecha": fecha_str,
+        "total_dia": total_dia,
+        "cantidad_ventas": len(ventas),
+        "ventas": resultado
+    }
+
+@app.delete("/ventas/{venta_id}")
+def eliminar_venta(venta_id: int, devolver_stock: bool = True, db: Session = Depends(get_db)):
+    """Elimina una venta registrada y opcionalmente devuelve los ingredientes al stock."""
+    venta = db.query(VentaModel).filter(VentaModel.id == venta_id).first()
+    if not venta:
+        raise HTTPException(status_code=404, detail="Venta no encontrada")
+
+    if devolver_stock:
+        detalles = db.query(VentaDetalleModel).filter(VentaDetalleModel.venta_id == venta_id).all()
+        for d in detalles:
+            recetas = db.query(RecetaModel).filter(RecetaModel.producto_id == d.producto_id).all()
+            for r in recetas:
+                insumo = db.query(InsumoModel).filter(InsumoModel.id == r.insumo_id).first()
+                if insumo:
+                    insumo.cantidad_stock += (r.cantidad_utilizada * d.cantidad)
+
+    db.query(VentaDetalleModel).filter(VentaDetalleModel.venta_id == venta_id).delete()
+    db.delete(venta)
+    db.commit()
+    return {"status": "ok", "message": f"Venta {venta_id} eliminada"}
 
 
 # ==========================================

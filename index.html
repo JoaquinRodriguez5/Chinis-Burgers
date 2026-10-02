@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chinis Burgers - POS Mobile</title>
+    <style>
+        :root {
+            --primary: #e63946;
+            --secondary: #1d3557;
+            --bg: #f8f9fa;
+            --card-bg: #ffffff;
+            --text: #2b2d42;
+            --success: #2a9d8f;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            padding-bottom: 70px; /* Espacio para barra de navegación inferior */
+        }
+
+        header {
+            background-color: var(--secondary);
+            color: white;
+            padding: 15px;
+            text-align: center;
+            font-size: 1.2rem;
+            font-weight: bold;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .container {
+            padding: 15px;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        /* Secciones */
+        .section {
+            display: none;
+        }
+        .section.active {
+            display: block;
+        }
+
+        /* Tarjetas y Formularios */
+        .card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+
+        h2 {
+            margin-bottom: 15px;
+            color: var(--secondary);
+            font-size: 1.1rem;
+        }
+
+        label {
+            display: block;
+            font-size: 0.9rem;
+            margin-top: 10px;
+            font-weight: bold;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 12px;
+            margin-top: 5px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            font-size: 1rem;
+        }
+
+        button {
+            width: 100%;
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 14px;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: bold;
+            margin-top: 15px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        button:active {
+            opacity: 0.8;
+        }
+
+        .btn-success {
+            background-color: var(--success);
+        }
+
+        /* Grilla de productos para venta rápida */
+        .grid-productos {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .item-producto {
+            background: var(--card-bg);
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 15px;
+            text-align: center;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .item-producto.selected {
+            border-color: var(--primary);
+            background-color: #ffe5e8;
+        }
+
+        /* Listas e Insumos */
+        .list-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #eee;
+        }
+
+        /* Navegación inferior tipo App */
+        nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            display: flex;
+            justify-content: space-around;
+            border-top: 1px solid #ddd;
+            padding: 10px 0;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
+        }
+
+        nav div {
+            text-align: center;
+            font-size: 0.8rem;
+            color: #666;
+            cursor: pointer;
+        }
+
+        nav div.active {
+            color: var(--primary);
+            font-weight: bold;
+        }
+
+        nav div span {
+            display: block;
+            font-size: 1.2rem;
+        }
+    </style>
+</head>
+<body>
+
+    <header>🍔 Chinis Burgers POS</header>
+
+    <div class="container">
+        <!-- VISTA DE VENTAS -->
+        <div id="sec-ventas" class="section active">
+            <h2>Registrar Venta Rápidamente</h2>
+            <div id="grid-productos" class="grid-productos">
+                <!-- Se cargan dinámicamente desde la API -->
+            </div>
+            <button class="btn-success" onclick="procesarVenta()">Confirmar y Cobrar</button>
+        </div>
+
+        <!-- VISTA DE INSUMOS -->
+        <div id="sec-insumos" class="section">
+            <div class="card">
+                <h2>Cargar Nuevo Insumo</h2>
+                <label>Nombre del Insumo</label>
+                <input type="text" id="ins-nombre" placeholder="Ej: Carne picada">
+                
+                <label>Unidad de Medida</label>
+                <input type="text" id="ins-unidad" placeholder="g, un, ml">
+                
+                <label>Stock Inicial</label>
+                <input type="number" id="ins-stock" placeholder="5000">
+
+                <label>Costo por Unidad de Medida ($)</label>
+                <input type="number" id="ins-costo" step="0.01" placeholder="8.5">
+
+                <button onclick="guardarInsumo()">Guardar Insumo</button>
+            </div>
+
+            <div class="card">
+                <h2>Inventario Actual</h2>
+                <div id="lista-insumos">
+                    <!-- Se carga dinámicamente -->
+                </div>
+            </div>
+        </div>
+
+        <!-- VISTA DE BALANCE -->
+        <div id="sec-balance" class="section">
+            <div class="card">
+                <h2>Resumen de Stock</h2>
+                <p>Usa la API en Render para sincronizar tu negocio desde cualquier lugar.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- NAVEGACIÓN INFERIOR (ESTILO APP MÓVIL) -->
+    <nav>
+        <div class="nav-item active" onclick="cambiarSeccion('sec-ventas', this)">
+            <span>🛒</span>Vender
+        </div>
+        <div class="nav-item" onclick="cambiarSeccion('sec-insumos', this)">
+            <span>📦</span>Insumos
+        </div>
+        <div class="nav-item" onclick="cambiarSeccion('sec-balance', this)">
+            <span>📊</span>Balance
+        </div>
+    </nav>
+
+    <script>
+        // URL de tu API desplegada en Render (Reemplazar cuando esté lista)
+        const API_URL = "http://127.0.0.1:8000"; 
+
+        function cambiarSeccion(idSeccion, el) {
+            document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            document.getElementById(idSeccion).classList.add('active');
+            el.classList.add('active');
+
+            if (idSeccion === 'sec-insumos') cargarInsumos();
+            if (idSeccion === 'sec-ventas') cargarProductos();
+        }
+
+        async function cargarInsumos() {
+            try {
+                const res = await fetch(`${API_URL}/insumos`);
+                const insumos = await res.json();
+                let html = '';
+                insumos.forEach(i => {
+                    html += `
+                        <div class="list-item">
+                            <div>
+                                <strong>${i.nombre}</strong><br>
+                                <small>${i.cantidad_stock} ${i.unidad_medida}</small>
+                            </div>
+                            <div>$${i.costo_unitario.toFixed(2)}</div>
+                        </div>`;
+                });
+                document.getElementById('lista-insumos').innerHTML = html || 'No hay insumos registrados.';
+            } catch (e) {
+                console.error("Error al cargar insumos:", e);
+            }
+        }
+
+        async function guardarInsumo() {
+            const data = {
+                nombre: document.getElementById('ins-nombre').value,
+                unidad_medida: document.getElementById('ins-unidad').value,
+                cantidad_stock: parseFloat(document.getElementById('ins-stock').value),
+                costo_unitario: parseFloat(document.getElementById('ins-costo').value),
+                stock_minimo: 0
+            };
+
+            const res = await fetch(`${API_URL}/insumos`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+
+            if (res.ok) {
+                alert("✅ Insumo guardado correctamente");
+                cargarInsumos();
+            } else {
+                alert("❌ Error al guardar insumo");
+            }
+        }
+
+        async function cargarProductos() {
+            try {
+                const res = await fetch(`${API_URL}/productos`);
+                const productos = await res.json();
+                let html = '';
+                productos.forEach(p => {
+                    html += `
+                        <div class="item-producto" onclick="this.classList.toggle('selected')" data-id="${p.id}">
+                            <strong>${p.nombre}</strong><br>
+                            $${p.precio_venta.toFixed(2)}
+                        </div>`;
+                });
+                document.getElementById('grid-productos').innerHTML = html || 'No hay productos creados.';
+            } catch (e) {
+                console.error("Error al cargar productos:", e);
+            }
+        }
+
+        // Cargar vista inicial
+        cargarProductos();
+    </script>
+</body>
+</html>

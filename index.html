@@ -205,15 +205,32 @@
         }
 
         async function editarInsumo(id, stockActual, costoActual) {
+            // 1. Pregunta el stock actual
             const nuevoStock = prompt("Nuevo Stock total disponible:", stockActual);
             if (nuevoStock === null) return;
 
-            const nuevoCosto = prompt("Nuevo Costo por unidad de medida ($):", costoActual);
-            if (nuevoCosto === null) return;
+            // 2. Pregunta el precio de la bolsa/paquete
+            const precioPaquete = prompt("¿Cuánto te salió la última compra / bolsa? ($):");
+            if (precioPaquete === null) return;
+
+            // 3. Pregunta la cantidad que traía ese paquete (ej: 25 kg o 100 cajas)
+            const cantidadPaquete = prompt("¿De cuántos kg/unidades/litros era esa bolsa/paquete?:", 1);
+            if (cantidadPaquete === null) return;
+
+            const cantNum = parseFloat(cantidadPaquete);
+            const precNum = parseFloat(precioPaquete);
+
+            if (isNaN(cantNum) || cantNum <= 0 || isNaN(precNum)) {
+                alert("⚠️ Por favor ingresa números válidos para el precio y la cantidad.");
+                return;
+            }
+
+            // Cálculo automático del costo por unidad de medida (ej: $/kg)
+            const nuevoCostoUnitario = precNum / cantNum;
 
             const data = {
                 cantidad_stock: parseFloat(nuevoStock),
-                costo_unitario: parseFloat(nuevoCosto)
+                costo_unitario: nuevoCostoUnitario
             };
 
             try {
@@ -224,12 +241,14 @@
                 });
 
                 if (res.ok) {
-                    alert("✅ Insumo actualizado");
+                    alert(`✅ Insumo actualizado. Nuevo costo calculado: $${nuevoCostoUnitario.toFixed(2)} por unidad/kg`);
                     cargarInsumos();
                 } else {
-                    alert("❌ Error al actualizar");
+                    alert("❌ Error al actualizar el insumo.");
                 }
-            } catch (e) { console.error(e); }
+            } catch (e) {
+                console.error("Error al conectar con la API:", e);
+            }
         }
 
         async function eliminarInsumo(id, nombre) {

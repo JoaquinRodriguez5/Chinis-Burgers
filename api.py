@@ -29,8 +29,8 @@ class VentaCreate(BaseModel):
 class InsumoCreate(BaseModel):
     nombre: str
     unidad_medida: str
-    cantidad_stock: float
-    costo_unitario: float
+    cantidad_comprada: float
+    precio_total: float
     stock_minimo: float = 0.0
 
 # Endpoints
@@ -40,7 +40,28 @@ def obtener_insumos(db: Session = Depends(get_db)):
 
 @app.post("/insumos")
 def crear_insumo(insumo: InsumoCreate, db: Session = Depends(get_db)):
-    nuevo = InsumoModel(**insumo.dict())
+    if insumo.cantidad_comprada <= 0:
+        raise HTTPException(status_code=400, detail="La cantidad debe ser mayor a 0")
+    
+    # Cálculo del costo por unidad de medida
+    costo_unitario = insumo.precio_total / insumo.cantidad_comprada
+
+    # Verificar si el insumo ya existe para sumar stock o crear uno nuevo
+    existente = db.query(InsumoModel).filter(InsumoModel.nombre == insumo.nombre).first()
+    if existente:
+        existente.cantidad_stock += insumo.cantidad_comprada
+        existente.costo_unitario = costo_unitario  # Actualiza al último precio de compra
+        db.commit()
+        db.refresh(existente)
+        return existente
+
+    nuevo = InsumoModel(
+        nombre=insumo.nombre,
+        unidad_medida=insumo.unidad_medida,
+        cantidad_stock=insumo.cantidad_comprada,
+        costo_unitario=costo_unitario,
+        stock_minimo=insumo.stock_minimo
+    )
     db.add(nuevo)
     db.commit()
     db.refresh(nuevo)

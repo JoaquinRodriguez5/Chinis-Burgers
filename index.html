@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chinis Burgers - POS & Dashboard</title>
-    <!-- Cargamos Chart.js desde CDN -->
+    <!-- Cargamos Chart.js desde CDN para los gráficos -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
@@ -27,7 +27,9 @@
         .card { background: var(--card-bg); border-radius: 12px; padding: 15px; margin-bottom: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
         h2 { margin-bottom: 12px; color: var(--secondary); font-size: 1.1rem; }
         
-        /* Grid de KPIs */
+        label { display: block; font-size: 0.9rem; margin-top: 10px; font-weight: bold; }
+        input, select { width: 100%; padding: 12px; margin-top: 5px; border: 1px solid #ccc; border-radius: 8px; font-size: 1rem; }
+
         .kpi-container { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
         .kpi-card { background: var(--secondary); color: white; padding: 15px; border-radius: 10px; text-align: center; }
         .kpi-card h3 { font-size: 0.8rem; opacity: 0.8; }
@@ -39,6 +41,8 @@
 
         button { width: 100%; background-color: var(--primary); color: white; border: none; padding: 14px; border-radius: 8px; font-size: 1rem; font-weight: bold; margin-top: 15px; cursor: pointer; }
         .btn-success { background-color: var(--success); }
+
+        .list-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #eee; }
 
         nav { position: fixed; bottom: 0; left: 0; right: 0; background: white; display: flex; justify-content: space-around; border-top: 1px solid #ddd; padding: 10px 0; }
         nav div { text-align: center; font-size: 0.8rem; color: #666; cursor: pointer; }
@@ -86,13 +90,36 @@
         <!-- VISTA DE INSUMOS -->
         <div id="sec-insumos" class="section">
             <div class="card">
-                <h2>Inventario de Insumos</h2>
+                <h2>📦 Cargar / Comprar Insumo</h2>
+                <label>Nombre del Insumo</label>
+                <input type="text" id="ins-nombre" placeholder="Ej: Harina 0000 / Caja de Pizza">
+                
+                <label>Cantidad Comprada</label>
+                <input type="number" id="ins-cantidad" placeholder="Ej: 25 (o 100 para cajas)">
+                
+                <label>Unidad de Medida</label>
+                <select id="ins-unidad">
+                    <option value="kg">Kilogramos (kg)</option>
+                    <option value="g">Gramos (g)</option>
+                    <option value="un">Unidades (un)</option>
+                    <option value="l">Litros (l)</option>
+                    <option value="ml">Mililitros (ml)</option>
+                </select>
+
+                <label>Precio Total Pagado ($)</label>
+                <input type="number" id="ins-precio" step="0.01" placeholder="Ej: 18000">
+
+                <button onclick="guardarInsumo()">Cargar al Inventario</button>
+            </div>
+
+            <div class="card">
+                <h2>Inventario Actual</h2>
                 <div id="lista-insumos"></div>
             </div>
         </div>
     </div>
 
-    <!-- NAVEGACIÓN -->
+    <!-- NAVEGACIÓN INFERIOR -->
     <nav>
         <div class="nav-item active" onclick="cambiarSeccion('sec-ventas', this)"><span>🛒</span>Vender</div>
         <div class="nav-item" onclick="cambiarSeccion('sec-dashboard', this)"><span>📈</span>Dashboard</div>
@@ -100,6 +127,7 @@
     </nav>
 
     <script>
+        // URL pública de tu backend en Render
         const API_URL = "https://chinis-burgers.onrender.com"; 
         let chartTop, chartCat;
 
@@ -110,7 +138,69 @@
             el.classList.add('active');
 
             if (idSeccion === 'sec-dashboard') cargarDashboard();
+            if (idSeccion === 'sec-insumos') cargarInsumos();
             if (idSeccion === 'sec-ventas') cargarProductos();
+        }
+
+        async function guardarInsumo() {
+            const nombre = document.getElementById('ins-nombre').value.trim();
+            const cantidad = parseFloat(document.getElementById('ins-cantidad').value);
+            const unidad = document.getElementById('ins-unidad').value;
+            const precio = parseFloat(document.getElementById('ins-precio').value);
+
+            if (!nombre || isNaN(cantidad) || isNaN(precio)) {
+                alert("⚠️ Por favor completa todos los campos correctamente.");
+                return;
+            }
+
+            const data = {
+                nombre: nombre,
+                unidad_medida: unidad,
+                cantidad_comprada: cantidad,
+                precio_total: precio,
+                stock_minimo: 0
+            };
+
+            try {
+                const res = await fetch(`${API_URL}/insumos`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                if (res.ok) {
+                    alert(`✅ Insumo '${nombre}' cargado con éxito`);
+                    document.getElementById('ins-nombre').value = '';
+                    document.getElementById('ins-cantidad').value = '';
+                    document.getElementById('ins-precio').value = '';
+                    cargarInsumos();
+                } else {
+                    alert("❌ Error al guardar insumo.");
+                }
+            } catch (e) {
+                console.error("Error al conectar con la API:", e);
+            }
+        }
+
+        async function cargarInsumos() {
+            try {
+                const res = await fetch(`${API_URL}/insumos`);
+                const insumos = await res.json();
+                let html = '';
+                insumos.forEach(i => {
+                    html += `
+                        <div class="list-item">
+                            <div>
+                                <strong>${i.nombre}</strong><br>
+                                <small>Stock: ${i.cantidad_stock} ${i.unidad_medida}</small>
+                            </div>
+                            <div>$${i.costo_unitario.toFixed(2)} / ${i.unidad_medida}</div>
+                        </div>`;
+                });
+                document.getElementById('lista-insumos').innerHTML = html || 'No hay insumos registrados.';
+            } catch (e) {
+                console.error("Error al cargar insumos:", e);
+            }
         }
 
         async function cargarDashboard() {
@@ -121,7 +211,7 @@
                 document.getElementById('kpi-monto').innerText = `$${data.ventas_hoy_monto.toFixed(2)}`;
                 document.getElementById('kpi-pedidos').innerText = data.ventas_hoy_cantidad;
 
-                // Gráfico Top Productos (Barras)
+                // Gráfico Top Productos
                 const ctxTop = document.getElementById('chartTopProductos').getContext('2d');
                 if (chartTop) chartTop.destroy();
                 chartTop = new Chart(ctxTop, {
@@ -137,7 +227,7 @@
                     options: { responsive: true, plugins: { legend: { display: false } } }
                 });
 
-                // Gráfico Categorías (Torta)
+                // Gráfico Categorías
                 const ctxCat = document.getElementById('chartCategorias').getContext('2d');
                 if (chartCat) chartCat.destroy();
                 chartCat = new Chart(ctxCat, {
@@ -173,6 +263,7 @@
             } catch (e) { console.error(e); }
         }
 
+        // Carga inicial
         cargarProductos();
     </script>
 </body>

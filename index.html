@@ -716,6 +716,7 @@
             } catch (e) { console.error(e); }
         }
 
+// Cargar lista de insumos con la unidad pasada correctamente
         async function cargarInsumos() {
             try {
                 const res = await fetch(`${API_URL}/insumos`);
@@ -755,6 +756,7 @@
             } catch (e) { console.error(e); }
         }
 
+        // Función auxiliar para interpretar entradas como "250g", "1kg", "500ml", "2L", "10un" o números simples
         function parsearCantidadYUnidad(textoInput, unidadBase) {
             if (!textoInput) return null;
             let str = textoInput.toString().trim().toLowerCase();
@@ -795,8 +797,9 @@
             }
 
             return num;
-        }        
+        }
 
+        // Menú de edición con las 3 opciones (Ajustar, Agregar, Modificar Precio)
         async function editarInsumo(id, nombre, stockActual, costoActual, unidadMedida) {
             const opcion = prompt(
                 `Elegí una opción para '${nombre}':\n\n` +
@@ -816,7 +819,7 @@
                     return;
                 }
 
-                enviarActualizaciónInsumo(id, { cantidad_stock: nuevoStock, costo_unitario: costoActual });
+                await enviarActualizacionInsumo(id, { cantidad_stock: nuevoStock, costo_unitario: costoActual });
                 showToast(`✅ Stock de ${nombre} ajustado a ${nuevoStock} ${unidadMedida}`);
 
             } else if (opcion === "2") {
@@ -826,7 +829,7 @@
 
                 const cantidadIngresada = parsearCantidadYUnidad(inputCantidad, unidadMedida);
                 if (cantidadIngresada === null || cantidadIngresada <= 0) {
-                    showToast("⚠️ Cantidad ingresada no válida", true);
+                    showToast("⚠️️ Cantidad ingresada no válida", true);
                     return;
                 }
 
@@ -840,10 +843,9 @@
                 }
 
                 const nuevoStockFinal = stockActual + cantidadIngresada;
-                // Calcular el nuevo costo por unidad estándar (kg, l, un)
                 const nuevoCostoUnitario = precioPagado / cantidadIngresada;
 
-                enviarActualizaciónInsumo(id, { cantidad_stock: nuevoStockFinal, costo_unitario: nuevoCostoUnitario });
+                await enviarActualizacionInsumo(id, { cantidad_stock: nuevoStockFinal, costo_unitario: nuevoCostoUnitario });
                 showToast(`✅ Se sumaron ${cantidadIngresada} ${unidadMedida} a ${nombre}`);
 
             } else if (opcion === "3") {
@@ -857,8 +859,31 @@
                     return;
                 }
 
-                enviarActualizaciónInsumo(id, { cantidad_stock: stockActual, costo_unitario: nuevoPrecio });
+                await enviarActualizacionInsumo(id, { cantidad_stock: stockActual, costo_unitario: nuevoPrecio });
                 showToast(`✅ Precio de ${nombre} actualizado a $${nuevoPrecio} / ${unidadMedida}`);
+            }
+        }
+
+        // Función que envía la petición PUT a la API
+        async function enviarActualizacionInsumo(id, data) {
+            try {
+                const res = await fetch(`${API_URL}/insumos/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        cantidad_stock: parseFloat(data.cantidad_stock),
+                        costo_unitario: parseFloat(data.costo_unitario)
+                    })
+                });
+
+                if (res.ok) {
+                    cargarInsumos();
+                } else {
+                    showToast("⚠️ Error al guardar en el servidor", true);
+                }
+            } catch (e) {
+                console.error("Error al actualizar insumo:", e);
+                showToast("⚠️ Error de conexión", true);
             }
         }
 

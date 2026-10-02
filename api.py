@@ -111,11 +111,20 @@ def actualizar_insumo(insumo_id: int, datos: InsumoUpdate, db: Session = Depends
     if not insumo:
         raise HTTPException(status_code=404, detail="Insumo no encontrado")
     
-    insumo.cantidad_stock = datos.cantidad_stock
-    insumo.costo_unitario = datos.costo_unitario
+    # Actualizamos el stock real y el costo unitario
+    insumo.cantidad_stock = float(datos.cantidad_stock)
+    insumo.costo_unitario = float(datos.costo_unitario)
+    
+    db.add(insumo)
     db.commit()
     db.refresh(insumo)
-    return insumo
+    
+    return {
+        "status": "ok", 
+        "id": insumo.id, 
+        "cantidad_stock": insumo.cantidad_stock, 
+        "costo_unitario": insumo.costo_unitario
+    }
 
 @app.delete("/insumos/{insumo_id}")
 def eliminar_insumo(insumo_id: int, db: Session = Depends(get_db)):

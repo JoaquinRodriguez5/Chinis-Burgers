@@ -55,7 +55,13 @@ class ItemVenta(BaseModel):
 
 class RegistrarVenta(BaseModel):
     items: List[ItemVenta]
-    fecha_custom: Optional[str] = None  # Formato YYYY-MM-DD THH:MM por si cargás venta pasada
+    fecha_custom: Optional[str] = None
+
+class GastoCreate(BaseModel):
+    concepto: str
+    monto: float
+    tipo: str  # 'Fijo', 'Variable', 'Servicios', etc.
+    fecha_custom: Optional[str] = None
 
 
 # ==========================================
@@ -117,7 +123,7 @@ def eliminar_insumo(insumo_id: int, db: Session = Depends(get_db)):
 
 
 # ==========================================
-# ENDPOINTS - PRODUCTOS Y RECETAS
+# ENDPOINTS - PRODUCTOS, RECETAS Y COSTEO
 # ==========================================
 
 @app.get("/productos")
@@ -129,20 +135,31 @@ def listar_productos(db: Session = Depends(get_db)):
             .join(InsumoModel, RecetaModel.insumo_id == InsumoModel.id)\
             .filter(RecetaModel.producto_id == p.id).all()
         
+        costo_receta = 0.0
         receta_lista = []
         for r, ins in receta_items:
+            costo_ingrediente = r.cantidad_utilizada * ins.costo_unitario
+            costo_receta += costo_ingrediente
             receta_lista.append({
                 "insumo_id": r.insumo_id,
                 "insumo_nombre": ins.nombre,
                 "unidad_medida": ins.unidad_medida,
-                "cantidad_utilizada": r.cantidad_utilizada
+                "cantidad_utilizada": r.cantidad_utilizada,
+                "costo_unitario_insumo": ins.costo_unitario,
+                "costo_total_ingrediente": costo_ingrediente
             })
+
+        ganancia_bruta = p.precio_venta - costo_receta
+        margen_porcentaje = (ganancia_bruta / p.precio_venta * 100) if p.precio_venta > 0 else 0.0
 
         resultado.append({
             "id": p.id,
             "nombre": p.nombre,
             "categoria": p.categoria,
             "precio_venta": p.precio_venta,
+            "costo_produccion": costo_receta,
+            "ganancia_bruta": ganancia_bruta,
+            "margen_porcentaje": margen_porcentaje,
             "receta": receta_lista
         })
     return resultado
@@ -205,6 +222,44 @@ def eliminar_producto(producto_id: int, db: Session = Depends(get_db)):
 
 
 # ==========================================
+# ENDPOINTS - GASTOS FIJOS Y VARIABLES
+# ==========================================
+
+@app.get("/gastos")
+def listar_gastos(db: Session = Depends(get_db)):
+    return db.query(GastoModel).order_by(GastoModel.fecha.desc()).all()
+
+@app.post("/gastos")
+def crear_gasto(gasto_data: GastoCreate, db: Session = Depends(get_db)):
+    fecha_gasto = datetime.utcnow()
+    if gasto_data.fecha_custom:
+        try:
+            fecha_gasto = datetime.fromisoformat(gasto_data.fecha_custom)
+        except Exception:
+            pass
+
+    nuevo_gasto = GastoModel(
+        concepto=gasto_data.concepto,
+        monto=gasto_data.monto,
+        tipo=gasto_data.tipo,
+        fecha=fecha_gasto
+    )
+    db.add(nuevo_gasto)
+    db.commit()
+    db.refresh(nuevo_gasto)
+    return nuevo_gasto
+
+@app.delete("/gastos/{gasto_id}")
+def eliminar_gasto(gasto_id: int, db: Session = Depends(get_db)):
+    gasto = db.query(GastoModel).filter(GastoModel.id == gasto_id).first()
+    if not gasto:
+        raise HTTPException(status_code=404, detail="Gasto no encontrado")
+    db.delete(gasto)
+    db.commit()
+    return {"status": "ok", "message": f"Gasto {gasto_id} eliminado"}
+
+
+# ==========================================
 # ENDPOINTS - VENTAS, CALENDARIO Y HISTORIAL
 # ==========================================
 
@@ -242,7 +297,6 @@ def registrar_venta(venta_data: RegistrarVenta, db: Session = Depends(get_db)):
         )
         db.add(detalle)
 
-        # Descontar stock
         recetas = db.query(RecetaModel).filter(RecetaModel.producto_id == producto.id).all()
         for r in recetas:
             insumo = db.query(InsumoModel).filter(InsumoModel.id == r.insumo_id).first()
@@ -255,7 +309,6 @@ def registrar_venta(venta_data: RegistrarVenta, db: Session = Depends(get_db)):
 
 @app.get("/ventas/dia/{fecha_str}")
 def obtener_ventas_por_fecha(fecha_str: str, db: Session = Depends(get_db)):
-    """Obtiene el desglose de ventas para una fecha específica (YYYY-MM-DD)."""
     try:
         fecha_target = datetime.strptime(fecha_str, "%Y-%m-%d").date()
     except ValueError:
@@ -300,7 +353,6 @@ def obtener_ventas_por_fecha(fecha_str: str, db: Session = Depends(get_db)):
 
 @app.delete("/ventas/{venta_id}")
 def eliminar_venta(venta_id: int, devolver_stock: bool = True, db: Session = Depends(get_db)):
-    """Elimina una venta registrada y opcionalmente devuelve los ingredientes al stock."""
     venta = db.query(VentaModel).filter(VentaModel.id == venta_id).first()
     if not venta:
         raise HTTPException(status_code=404, detail="Venta no encontrada")
@@ -321,7 +373,7 @@ def eliminar_venta(venta_id: int, devolver_stock: bool = True, db: Session = Dep
 
 
 # ==========================================
-# ENDPOINTS - METRICAS Y DASHBOARD
+# ENDPOINTS - METRICAS, DASHBOARD Y BALANCE
 # ==========================================
 
 @app.get("/stats/dashboard")
@@ -329,12 +381,33 @@ def obtener_dashboard_stats(db: Session = Depends(get_db)):
     hoy_inicio = datetime.combine(datetime.utcnow().date(), time.min)
     hoy_fin = datetime.combine(datetime.utcnow().date(), time.max)
     
+    # 1. Ventas de Hoy
     ventas_hoy = db.query(func.coalesce(func.sum(VentaModel.total), 0.0))\
         .filter(VentaModel.fecha >= hoy_inicio, VentaModel.fecha <= hoy_fin).scalar()
         
     cant_ventas_hoy = db.query(func.count(VentaModel.id))\
         .filter(VentaModel.fecha >= hoy_inicio, VentaModel.fecha <= hoy_fin).scalar()
 
+    # 2. Gastos de Hoy
+    gastos_hoy = db.query(func.coalesce(func.sum(GastoModel.monto), 0.0))\
+        .filter(GastoModel.fecha >= hoy_inicio, GastoModel.fecha <= hoy_fin).scalar()
+
+    # 3. Costo total de insumos consumidos hoy en las ventas
+    ventas_detalles_hoy = db.query(VentaDetalleModel)\
+        .join(VentaModel, VentaDetalleModel.venta_id == VentaModel.id)\
+        .filter(VentaModel.fecha >= hoy_inicio, VentaModel.fecha <= hoy_fin).all()
+
+    costo_insumos_hoy = 0.0
+    for vd in ventas_detalles_hoy:
+        recetas = db.query(RecetaModel, InsumoModel)\
+            .join(InsumoModel, RecetaModel.insumo_id == InsumoModel.id)\
+            .filter(RecetaModel.producto_id == vd.producto_id).all()
+        for r, ins in recetas:
+            costo_insumos_hoy += (r.cantidad_utilizada * ins.costo_unitario) * vd.cantidad
+
+    ganancia_neta_hoy = ventas_hoy - costo_insumos_hoy - gastos_hoy
+
+    # Top productos
     top_productos = db.query(
         ProductoModel.nombre,
         func.sum(VentaDetalleModel.cantidad).label("total_vendido")
@@ -343,6 +416,7 @@ def obtener_dashboard_stats(db: Session = Depends(get_db)):
      .order_by(func.sum(VentaDetalleModel.cantidad).desc())\
      .limit(5).all()
 
+    # Top categorías
     top_categorias = db.query(
         ProductoModel.categoria,
         func.sum(VentaDetalleModel.cantidad).label("total_vendido")
@@ -353,7 +427,9 @@ def obtener_dashboard_stats(db: Session = Depends(get_db)):
     return {
         "ventas_hoy_monto": ventas_hoy,
         "ventas_hoy_cantidad": cant_ventas_hoy,
-        "ticket_promedio": (ventas_hoy / cant_ventas_hoy) if cant_ventas_hoy > 0 else 0.0,
+        "gastos_hoy_monto": gastos_hoy,
+        "costo_insumos_hoy": costo_insumos_hoy,
+        "ganancia_neta_hoy": ganancia_neta_hoy,
         "top_productos": [{"nombre": p[0], "cantidad": p[1]} for p in top_productos],
         "top_categorias": [{"categoria": c[0], "cantidad": c[1]} for c in top_categorias]
     }

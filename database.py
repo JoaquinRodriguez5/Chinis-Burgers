@@ -3,20 +3,23 @@ from sqlalchemy import create_engine, Column, Integer, String, Float, ForeignKey
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from datetime import datetime
 
-# Usa PostgreSQL en producción si existe la variable, sino SQLite local
+# 1. Obtener la variable DATABASE_URL de Render (o usar SQLite si es local)
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./gastronomia.db")
 
-# Fix para URLs de Render/Heroku que usan postgres://
+# 2. Corrección clave para Neon / Render: SQLAlchemy exige 'postgresql://' en lugar de 'postgres://'
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
+# 3. Configurar el motor de la base de datos
 engine = create_engine(
-    DATABASE_URL, 
+    DATABASE_URL,
     connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {}
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
+
+# --- MODELOS DE LA BASE DE DATOS ---
 
 class InsumoModel(Base):
     __tablename__ = "insumos"

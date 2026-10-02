@@ -677,13 +677,27 @@
 
         async function guardarInsumo() {
             const nombre = document.getElementById('ins-nombre').value.trim();
-            const cantidad = parseFloat(document.getElementById('ins-cantidad').value);
+            let cantidad = parseFloat(document.getElementById('ins-cantidad').value);
             const unidad = document.getElementById('ins-unidad').value;
             const precio = parseFloat(document.getElementById('ins-precio').value);
 
-            if (!nombre || isNaN(cantidad) || isNaN(precio)) { showToast("⚠️ Completa los campos", true); return; }
+            if (!nombre || isNaN(cantidad) || isNaN(precio) || cantidad <= 0) {
+                showToast("⚠️ Completa los campos correctamente", true);
+                return;
+            }
 
-            const data = { nombre: nombre, unidad_medida: unidad, cantidad_comprada: cantidad, precio_total: precio, stock_minimo: 0 };
+            // Conversión inteligente si compras condimentos en gramos (ej: 250 g en insumo kg)
+            if ((unidad === 'kg' || unidad === 'l') && cantidad >= 100) {
+                cantidad = cantidad / 1000;
+            }
+
+            const data = { 
+                nombre: nombre, 
+                unidad_medida: unidad, 
+                cantidad_comprada: cantidad, 
+                precio_total: precio, 
+                stock_minimo: 0 
+            };
 
             try {
                 const res = await fetch(`${API_URL}/insumos`, {
@@ -693,7 +707,7 @@
                 });
 
                 if (res.ok) {
-                    showToast(`✅ Insumo '${nombre}' cargado`);
+                    showToast(`✅ Insumo '${nombre}' cargado / actualizado`);
                     document.getElementById('ins-nombre').value = '';
                     document.getElementById('ins-cantidad').value = '';
                     document.getElementById('ins-precio').value = '';
@@ -742,26 +756,39 @@
         }
 
         async function editarInsumo(id, nombre, stockActual, costoActual) {
-            const opcion = prompt(`Elegí qué querés modificar de '${nombre}':\n\n1. Ajustar STOCK REAL\n2. Actualizar PRECIO DE COMPRA`);
+            const opcion = prompt(
+                `Elegí qué querés hacer con '${nombre}':\n\n` +
+                `1. Ajustar STOCK REAL exacto que tenés hoy en cocina\n` +
+                `2. Cargar NUEVA COMPRA (sumar bolsa/paquete nuevo)`
+            );
 
             if (opcion === "1") {
-                const nuevoStock = prompt(`¿Cuánto te queda HOY de '${nombre}'?:`, stockActual);
+                const nuevoStock = prompt(`¿Cuánto te queda HOY de '${nombre}' en cocina?:`, stockActual);
                 if (nuevoStock === null) return;
                 enviarActualizaciónInsumo(id, { cantidad_stock: parseFloat(nuevoStock), costo_unitario: costoActual });
+
             } else if (opcion === "2") {
-                const precioPaquete = prompt("¿Cuánto te salió la nueva compra? ($):");
+                const precioPaquete = prompt("¿Cuánto te salió la nueva compra / paquete? ($):");
                 if (precioPaquete === null) return;
-                const cantidadPaquete = prompt("¿De cuántos kg/unidades era?:", 1);
+
+                let cantidadPaquete = prompt("¿De cuántos kg/g/unidades era esa compra? (ej: 25 para kg o 250 para g):", 1);
                 if (cantidadPaquete === null) return;
 
-                const cantNum = parseFloat(cantidadPaquete);
+                let cantNum = parseFloat(cantidadPaquete);
                 const precNum = parseFloat(precioPaquete);
+
                 if (isNaN(cantNum) || cantNum <= 0 || isNaN(precNum)) return;
 
-                const sumarStock = confirm("¿Querés SUMAR la cantidad al stock que ya tenías?");
-                const nuevoStockFinal = sumarStock ? stockActual + cantNum : stockActual;
+                // Si pone 250 en un insumo medido en kg, lo convierte a 0.25 kg
+                if (cantNum >= 100) {
+                    cantNum = cantNum / 1000;
+                }
 
-                enviarActualizaciónInsumo(id, { cantidad_stock: nuevoStockFinal, costo_unitario: precNum / cantNum });
+                const nuevoStockFinal = stockActual + cantNum;
+                const nuevoCostoUnitario = precNum / cantNum;
+
+                enviarActualizaciónInsumo(id, { cantidad_stock: nuevoStockFinal, costo_unitario: nuevoCostoUnitario });
+                showToast(`✅ Se sumaron ${cantNum} al stock de ${nombre}. Stock actual: ${nuevoStockFinal}`);
             }
         }
 

@@ -77,11 +77,20 @@ def crear_o_actualizar_insumo(insumo: InsumoCreate, db: Session = Depends(get_db
     if insumo.cantidad_comprada <= 0:
         raise HTTPException(status_code=400, detail="La cantidad comprada debe ser mayor a 0")
     
-    costo_unitario = insumo.precio_total / insumo.cantidad_comprada
+    cantidad_real = insumo.cantidad_comprada
+
+    # Conversión automática: Si el insumo se mide en kg/l y pones >= 1 (ej: 250 g), convierte a 0.25 kg
+    if (insumo.unidad_medida == 'kg' or insumo.unidad_medida == 'l') and cantidad_real >= 1:
+        # Si pones un valor como 250 en un insumo kg, asumimos que son gramos (0.25 kg)
+        # Excepto si la compra es verdaderamente mayor a 50 kg para bolsas gigantes
+        if cantidad_real >= 100:
+            cantidad_real = cantidad_real / 1000.0
+
+    costo_unitario = insumo.precio_total / cantidad_real
 
     existente = db.query(InsumoModel).filter(InsumoModel.nombre == insumo.nombre).first()
     if existente:
-        existente.cantidad_stock += insumo.cantidad_comprada
+        existente.cantidad_stock += cantidad_real
         existente.costo_unitario = costo_unitario
         db.commit()
         db.refresh(existente)
@@ -90,7 +99,7 @@ def crear_o_actualizar_insumo(insumo: InsumoCreate, db: Session = Depends(get_db
     nuevo = InsumoModel(
         nombre=insumo.nombre,
         unidad_medida=insumo.unidad_medida,
-        cantidad_stock=insumo.cantidad_comprada,
+        cantidad_stock=cantidad_real,
         costo_unitario=costo_unitario,
         stock_minimo=insumo.stock_minimo
     )

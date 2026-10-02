@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chinis Burgers - POS & Rentabilidad</title>
+    <title>Chinis Burgers - POS & Gestión</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
@@ -30,6 +30,11 @@
         
         label { display: block; font-size: 0.9rem; margin-top: 10px; font-weight: bold; }
         input, select { width: 100%; padding: 12px; margin-top: 5px; border: 1px solid #ccc; border-radius: 8px; font-size: 1rem; }
+
+        /* Categorías Filtro POS */
+        .cat-filter-container { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 10px; margin-bottom: 10px; }
+        .chip-cat { background: #e2e8f0; color: var(--secondary); border: none; padding: 8px 14px; border-radius: 20px; font-size: 0.85rem; font-weight: bold; white-space: nowrap; cursor: pointer; }
+        .chip-cat.active { background: var(--primary); color: white; }
 
         .kpi-container { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
         .kpi-card { background: var(--secondary); color: white; padding: 12px; border-radius: 10px; text-align: center; }
@@ -58,6 +63,12 @@
 
         .badge-margen { background: #e8f5e9; color: #2e7d32; font-weight: bold; padding: 3px 8px; border-radius: 12px; font-size: 0.8rem; }
 
+        /* Toast Notifications */
+        #toast-container { position: fixed; top: 15px; left: 50%; transform: translateX(-50%); z-index: 9999; width: 90%; max-width: 400px; }
+        .toast { padding: 12px 16px; border-radius: 8px; color: white; font-weight: bold; font-size: 0.9rem; text-align: center; box-shadow: 0 4px 12px rgba(0,0,0,0.15); margin-bottom: 8px; transition: opacity 0.3s ease; }
+        .toast-success { background-color: var(--success); }
+        .toast-error { background-color: var(--danger); }
+
         nav { position: fixed; bottom: 0; left: 0; right: 0; background: white; display: flex; justify-content: space-around; border-top: 1px solid #ddd; padding: 10px 0; }
         nav div { text-align: center; font-size: 0.7rem; color: #666; cursor: pointer; }
         nav div.active { color: var(--primary); font-weight: bold; }
@@ -67,16 +78,27 @@
 <body>
 
     <header>🍔 Chinis Burgers POS</header>
+    <div id="toast-container"></div>
 
     <div class="container">
         <!-- VISTA DE VENTAS (POS) -->
         <div id="sec-ventas" class="section active">
             <h2>Registrar Venta Rápidamente</h2>
+            
+            <!-- Filtro por Categorías -->
+            <div class="cat-filter-container" id="pos-cat-filter">
+                <button class="chip-cat active" onclick="filtrarCategoriaPOS('Todos', this)">Todos</button>
+                <button class="chip-cat" onclick="filtrarCategoriaPOS('Pizzas', this)">Pizzas</button>
+                <button class="chip-cat" onclick="filtrarCategoriaPOS('Hamburguesas', this)">Hamburguesas</button>
+                <button class="chip-cat" onclick="filtrarCategoriaPOS('Bebidas', this)">Bebidas</button>
+                <button class="chip-cat" onclick="filtrarCategoriaPOS('Otros', this)">Otros</button>
+            </div>
+
             <div id="grid-productos" class="grid-productos"></div>
             <button class="btn-success" style="margin-top: 15px;" onclick="procesarVenta()">Confirmar y Cobrar</button>
         </div>
 
-        <!-- VISTA DE GASTOS FIJOS Y VARIABLES -->
+        <!-- VISTA DE GASTOS -->
         <div id="sec-gastos" class="section">
             <div class="card">
                 <h2>💸 Cargar Gasto (Luz, Alquiler, Sueldos)</h2>
@@ -104,7 +126,7 @@
             </div>
         </div>
 
-        <!-- VISTA DE CALENDARIO Y HISTORIAL DE VENTAS -->
+        <!-- VISTA DE CALENDARIO -->
         <div id="sec-calendario" class="section">
             <div class="card">
                 <h2>📅 Historial por Fecha</h2>
@@ -121,9 +143,23 @@
                 <h2>Ventas del Día</h2>
                 <div id="cal-lista-ventas"></div>
             </div>
+
+            <div class="card">
+                <h2>➕ Cargar Venta Manual (Fecha pasada)</h2>
+                <label>Producto</label>
+                <select id="manual-prod-id"></select>
+
+                <label>Cantidad</label>
+                <input type="number" id="manual-cant" value="1" min="1">
+
+                <label>Fecha y Hora</label>
+                <input type="datetime-local" id="manual-fecha-hora">
+
+                <button class="btn-success" onclick="cargarVentaManual()">Registrar Venta Pasada</button>
+            </div>
         </div>
 
-        <!-- VISTA DE CREAR Y EDITAR PRODUCTOS / RECETAS Y COSTOS -->
+        <!-- VISTA DE PRODUCTOS / RECETAS -->
         <div id="sec-productos" class="section">
             <div class="card">
                 <h2 id="prod-form-title">🍕 Crear Producto con Receta</h2>
@@ -157,7 +193,7 @@
             </div>
         </div>
 
-        <!-- VISTA DE DASHBOARD Y GANANCIA NETA -->
+        <!-- VISTA DE DASHBOARD -->
         <div id="sec-dashboard" class="section">
             <h2>📊 Balance General (Hoy)</h2>
             <div class="kpi-container">
@@ -238,6 +274,16 @@
         let listaInsumosGlobal = [];
         let productosGlobales = [];
         let productosSeleccionados = {};
+        let categoriaActivaPOS = "Todos";
+
+        function showToast(mensaje, esError = false) {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${esError ? 'toast-error' : 'toast-success'}`;
+            toast.innerText = mensaje;
+            container.appendChild(toast);
+            setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 3000);
+        }
 
         function cambiarSeccion(idSeccion, el) {
             document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
@@ -251,6 +297,13 @@
             if (idSeccion === 'sec-productos') prepararFormularioProductos();
             if (idSeccion === 'sec-calendario') inicializarCalendario();
             if (idSeccion === 'sec-gastos') cargarGastos();
+        }
+
+        function filtrarCategoriaPOS(cat, el) {
+            categoriaActivaPOS = cat;
+            document.querySelectorAll('.chip-cat').forEach(c => c.classList.remove('active'));
+            el.classList.add('active');
+            renderizarGridPOS();
         }
 
         async function cargarGastos() {
@@ -284,7 +337,7 @@
             const tipo = document.getElementById('gasto-tipo').value;
 
             if (!concepto || isNaN(monto) || monto <= 0) {
-                alert("⚠️ Ingresa un concepto y monto válido.");
+                showToast("⚠️ Ingresa concepto y monto válido", true);
                 return;
             }
 
@@ -296,7 +349,7 @@
                 });
 
                 if (res.ok) {
-                    alert("✅ Gasto registrado");
+                    showToast("✅ Gasto registrado");
                     document.getElementById('gasto-concepto').value = '';
                     document.getElementById('gasto-monto').value = '';
                     cargarGastos();
@@ -308,7 +361,7 @@
             if (!confirm("¿Eliminar este registro de gasto?")) return;
             try {
                 const res = await fetch(`${API_URL}/gastos/${id}`, { method: 'DELETE' });
-                if (res.ok) cargarGastos();
+                if (res.ok) { showToast("🗑 Gasto eliminado"); cargarGastos(); }
             } catch (e) { console.error(e); }
         }
 
@@ -316,6 +369,7 @@
             const hoy = new Date().toISOString().split('T')[0];
             document.getElementById('cal-fecha').value = hoy;
             cargarVentasPorFecha();
+            prepararFormularioVentaManual();
         }
 
         async function cargarVentasPorFecha() {
@@ -352,7 +406,48 @@
             try {
                 const res = await fetch(`${API_URL}/ventas/${id}?devolver_stock=${devolver}`, { method: 'DELETE' });
                 if (res.ok) {
-                    alert("🗑 Venta eliminada correctamente");
+                    showToast("🗑 Venta eliminada");
+                    cargarVentasPorFecha();
+                }
+            } catch (e) { console.error(e); }
+        }
+
+        async function prepararFormularioVentaManual() {
+            try {
+                const res = await fetch(`${API_URL}/productos`);
+                const productos = await res.json();
+                let options = '';
+                productos.forEach(p => {
+                    options += `<option value="${p.id}">${p.nombre} ($${p.precio_venta.toFixed(2)})</option>`;
+                });
+                document.getElementById('manual-prod-id').innerHTML = options;
+            } catch (e) { console.error(e); }
+        }
+
+        async function cargarVentaManual() {
+            const prodId = parseInt(document.getElementById('manual-prod-id').value);
+            const cantidad = parseInt(document.getElementById('manual-cant').value);
+            const fechaHora = document.getElementById('manual-fecha-hora').value;
+
+            if (!prodId || isNaN(cantidad) || cantidad <= 0 || !fechaHora) {
+                showToast("⚠️ Completa producto, cantidad y fecha/hora", true);
+                return;
+            }
+
+            const data = {
+                items: [{ producto_id: prodId, cantidad: cantidad }],
+                fecha_custom: fechaHora
+            };
+
+            try {
+                const res = await fetch(`${API_URL}/ventas`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                if (res.ok) {
+                    showToast("✅ Venta pasada registrada");
                     cargarVentasPorFecha();
                 }
             } catch (e) { console.error(e); }
@@ -402,7 +497,7 @@
             const precio = parseFloat(document.getElementById('prod-precio').value);
 
             if (!nombre || isNaN(precio)) {
-                alert("⚠️ Ingresa un nombre y precio válido.");
+                showToast("⚠️ Ingresa un nombre y precio válido", true);
                 return;
             }
 
@@ -438,7 +533,7 @@
                 });
 
                 if (res.ok) {
-                    alert(`✅ Producto '${nombre}' guardado.`);
+                    showToast(`✅ Producto '${nombre}' guardado`);
                     prepararFormularioProductos();
                 }
             } catch (e) { console.error(e); }
@@ -505,33 +600,40 @@
             if (!confirm(`¿Eliminar '${nombre}' y su receta?`)) return;
             try {
                 const res = await fetch(`${API_URL}/productos/${id}`, { method: 'DELETE' });
-                if (res.ok) { alert("🗑️ Producto eliminado"); prepararFormularioProductos(); }
+                if (res.ok) { showToast("🗑 Producto eliminado"); prepararFormularioProductos(); }
             } catch (e) { console.error(e); }
         }
 
         async function cargarProductos() {
             try {
                 const res = await fetch(`${API_URL}/productos`);
-                const productos = await res.json();
-                let html = '';
-
-                productos.forEach(p => {
-                    const qty = productosSeleccionados[p.id] || 0;
-                    const isSelected = qty > 0;
-
-                    html += `
-                        <div class="item-producto ${isSelected ? 'selected' : ''}" id="prod-card-${p.id}">
-                            <strong>${p.nombre}</strong><br>
-                            <span style="color: #555;">$${p.precio_venta.toFixed(2)}</span>
-                            <div class="counter-controls">
-                                <button class="btn-qty" onclick="modificarCantidadVenta(${p.id}, -1)">-</button>
-                                <span class="qty-val" id="qty-${p.id}">${qty}</span>
-                                <button class="btn-qty" onclick="modificarCantidadVenta(${p.id}, 1)">+</button>
-                            </div>
-                        </div>`;
-                });
-                document.getElementById('grid-productos').innerHTML = html || 'No hay productos creados.';
+                productosGlobales = await res.json();
+                renderizarGridPOS();
             } catch (e) { console.error(e); }
+        }
+
+        function renderizarGridPOS() {
+            let html = '';
+            const filtrados = categoriaActivaPOS === "Todos" 
+                ? productosGlobales 
+                : productosGlobales.filter(p => p.categoria === categoriaActivaPOS);
+
+            filtrados.forEach(p => {
+                const qty = productosSeleccionados[p.id] || 0;
+                const isSelected = qty > 0;
+
+                html += `
+                    <div class="item-producto ${isSelected ? 'selected' : ''}" id="prod-card-${p.id}">
+                        <strong>${p.nombre}</strong><br>
+                        <span style="color: #555;">$${p.precio_venta.toFixed(2)}</span>
+                        <div class="counter-controls">
+                            <button class="btn-qty" onclick="modificarCantidadVenta(${p.id}, -1)">-</button>
+                            <span class="qty-val" id="qty-${p.id}">${qty}</span>
+                            <button class="btn-qty" onclick="modificarCantidadVenta(${p.id}, 1)">+</button>
+                        </div>
+                    </div>`;
+            });
+            document.getElementById('grid-productos').innerHTML = html || 'No hay productos en esta categoría.';
         }
 
         function modificarCantidadVenta(id, cambio) {
@@ -555,7 +657,7 @@
                 }
             }
 
-            if (items.length === 0) { alert("⚠️ Selecciona al menos un producto."); return; }
+            if (items.length === 0) { showToast("⚠️ Selecciona al menos un producto", true); return; }
 
             try {
                 const res = await fetch(`${API_URL}/ventas`, {
@@ -566,7 +668,7 @@
 
                 if (res.ok) {
                     const data = await res.json();
-                    alert(`🎉 ¡Venta realizada! Total: $${data.total.toFixed(2)}`);
+                    showToast(`🎉 ¡Venta cobrada: $${data.total.toFixed(2)}!`);
                     productosSeleccionados = {};
                     cargarProductos();
                 }
@@ -579,7 +681,7 @@
             const unidad = document.getElementById('ins-unidad').value;
             const precio = parseFloat(document.getElementById('ins-precio').value);
 
-            if (!nombre || isNaN(cantidad) || isNaN(precio)) { alert("⚠️️ Completa los campos."); return; }
+            if (!nombre || isNaN(cantidad) || isNaN(precio)) { showToast("⚠️ Completa los campos", true); return; }
 
             const data = { nombre: nombre, unidad_medida: unidad, cantidad_comprada: cantidad, precio_total: precio, stock_minimo: 0 };
 
@@ -591,7 +693,7 @@
                 });
 
                 if (res.ok) {
-                    alert(`✅ Insumo '${nombre}' cargado`);
+                    showToast(`✅ Insumo '${nombre}' cargado`);
                     document.getElementById('ins-nombre').value = '';
                     document.getElementById('ins-cantidad').value = '';
                     document.getElementById('ins-precio').value = '';
@@ -608,12 +710,21 @@
 
                 insumos.forEach(i => {
                     const sinStock = i.cantidad_stock <= 0;
-                    const badgeStock = sinStock 
-                        ? `<span style="color: var(--danger); font-weight: bold;">⚠️ SIN STOCK (0 ${i.unidad_medida})</span>` 
-                        : `${i.cantidad_stock.toFixed(2)} ${i.unidad_medida}`;
+                    const stockBajo = i.cantidad_stock > 0 && i.cantidad_stock <= 2; // Alerta si queda 2 kg/un o menos
+
+                    let styleBg = '';
+                    let badgeStock = `${i.cantidad_stock.toFixed(2)} ${i.unidad_medida}`;
+
+                    if (sinStock) {
+                        styleBg = 'background-color: #fff0f3; padding: 10px; border-radius: 8px;';
+                        badgeStock = `<span style="color: var(--danger); font-weight: bold;">⚠️ SIN STOCK (0 ${i.unidad_medida})</span>`;
+                    } else if (stockBajo) {
+                        styleBg = 'background-color: #fffbe6; padding: 10px; border-radius: 8px;';
+                        badgeStock = `<span style="color: #d97706; font-weight: bold;">⚠️ STOCK BAJO (${i.cantidad_stock.toFixed(2)} ${i.unidad_medida})</span>`;
+                    }
 
                     html += `
-                        <div class="list-item" style="${sinStock ? 'background-color: #fff0f3; padding: 10px; border-radius: 8px;' : ''}">
+                        <div class="list-item" style="${styleBg}">
                             <div>
                                 <strong>${i.nombre}</strong><br>
                                 <small>Stock Real: ${badgeStock}</small><br>
@@ -661,7 +772,7 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)
                 });
-                if (res.ok) { alert("✅ Insumo actualizado"); cargarInsumos(); }
+                if (res.ok) { showToast("✅ Insumo actualizado"); cargarInsumos(); }
             } catch (e) { console.error(e); }
         }
 
@@ -669,7 +780,7 @@
             if (!confirm(`¿Seguro que deseas eliminar '${nombre}'?`)) return;
             try {
                 const res = await fetch(`${API_URL}/insumos/${id}`, { method: 'DELETE' });
-                if (res.ok) { alert("🗑️ Insumo eliminado"); cargarInsumos(); }
+                if (res.ok) { showToast("🗑 Insumo eliminado"); cargarInsumos(); }
             } catch (e) { console.error(e); }
         }
 

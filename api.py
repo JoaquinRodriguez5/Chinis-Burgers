@@ -60,7 +60,7 @@ class RegistrarVenta(BaseModel):
 class GastoCreate(BaseModel):
     concepto: str
     monto: float
-    tipo: str  # 'Fijo', 'Variable', 'Servicios', etc.
+    tipo: str
     fecha_custom: Optional[str] = None
 
 
@@ -381,18 +381,15 @@ def obtener_dashboard_stats(db: Session = Depends(get_db)):
     hoy_inicio = datetime.combine(datetime.utcnow().date(), time.min)
     hoy_fin = datetime.combine(datetime.utcnow().date(), time.max)
     
-    # 1. Ventas de Hoy
     ventas_hoy = db.query(func.coalesce(func.sum(VentaModel.total), 0.0))\
         .filter(VentaModel.fecha >= hoy_inicio, VentaModel.fecha <= hoy_fin).scalar()
         
     cant_ventas_hoy = db.query(func.count(VentaModel.id))\
         .filter(VentaModel.fecha >= hoy_inicio, VentaModel.fecha <= hoy_fin).scalar()
 
-    # 2. Gastos de Hoy
     gastos_hoy = db.query(func.coalesce(func.sum(GastoModel.monto), 0.0))\
         .filter(GastoModel.fecha >= hoy_inicio, GastoModel.fecha <= hoy_fin).scalar()
 
-    # 3. Costo total de insumos consumidos hoy en las ventas
     ventas_detalles_hoy = db.query(VentaDetalleModel)\
         .join(VentaModel, VentaDetalleModel.venta_id == VentaModel.id)\
         .filter(VentaModel.fecha >= hoy_inicio, VentaModel.fecha <= hoy_fin).all()
@@ -407,7 +404,6 @@ def obtener_dashboard_stats(db: Session = Depends(get_db)):
 
     ganancia_neta_hoy = ventas_hoy - costo_insumos_hoy - gastos_hoy
 
-    # Top productos
     top_productos = db.query(
         ProductoModel.nombre,
         func.sum(VentaDetalleModel.cantidad).label("total_vendido")
@@ -416,7 +412,6 @@ def obtener_dashboard_stats(db: Session = Depends(get_db)):
      .order_by(func.sum(VentaDetalleModel.cantidad).desc())\
      .limit(5).all()
 
-    # Top categorías
     top_categorias = db.query(
         ProductoModel.categoria,
         func.sum(VentaDetalleModel.cantidad).label("total_vendido")

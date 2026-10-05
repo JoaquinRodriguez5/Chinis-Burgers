@@ -454,3 +454,7 @@ def obtener_dashboard_stats(db: Session = Depends(get_db)):
         "top_productos": [{"nombre": p[0], "cantidad": p[1]} for p in top_productos],
         "top_categorias": [{"categoria": c[0], "cantidad": c[1]} for c in top_categorias]
     }
+
+@app.get("/ping")
+def ping():
+    return {"status": "ok", "message": "Chinis Burgers API activa"}

@@ -271,53 +271,53 @@ def eliminar_gasto(gasto_id: int, db: Session = Depends(get_db)):
 # ==========================================
 
 @app.post("/ventas")
-def registrar_venta(venta_data: RegistrarVenta, db: Session = Depends(get_db)):
-    if not venta_data.items:
-        raise HTTPException(status_code=400, detail="Debe seleccionar al menos un producto")
-
-    fecha_venta = datetime.utcnow()
-    if venta_data.fecha_custom:
-        try:
-            fecha_venta = datetime.fromisoformat(venta_data.fecha_custom)
-        except Exception:
-            pass
-
-    total_venta = 0.0
-    # Guardamos el metodo_pago en la columna correspondiente
-    nueva_venta = VentaModel(
-        fecha=fecha_venta, 
-        total=0.0, 
-        metodo_pago=venta_data.metodo_pago
-    )
-    db.add(nueva_venta)
-    db.commit()
-    db.refresh(nueva_venta)
-
-    for item in venta_data.items:
-        producto = db.query(ProductoModel).filter(ProductoModel.id == item.producto_id).first()
-        if not producto:
-            continue
+def registrar_venta(venta_data: VentaCreateSchema, db: Session = Depends(get_db)):
+    try:
+        # Crear la instancia de la venta
+        nueva_venta = VentaModel()
+        nueva_venta.total = 0.0
+        nueva_venta.metodo_pago = getattr(venta_data, 'metodo_pago', 'Efectivo')
         
-        subtotal = producto.precio_venta * item.cantidad
-        total_venta += subtotal
+        db.add(nueva_venta)
+        db.flush()  # Asigna ID a nueva_venta
 
-        detalle = VentaDetalleModel(
-            venta_id=nueva_venta.id,
-            producto_id=producto.id,
-            cantidad=item.cantidad,
-            precio_unitario=producto.precio_venta
-        )
-        db.add(detalle)
+        total_venta = 0.0
 
-        recetas = db.query(RecetaModel).filter(RecetaModel.producto_id == producto.id).all()
-        for r in recetas:
-            insumo = db.query(InsumoModel).filter(InsumoModel.id == r.insumo_id).first()
-            if insumo:
-                insumo.cantidad_stock -= (r.cantidad_utilizada * item.cantidad)
+        for item in venta_data.items:
+            producto = db.query(ProductoModel).filter(ProductoModel.id == item.producto_id).first()
+            if not producto:
+                raise HTTPException(status_code=404, detail=f"Producto ID {item.producto_id} no encontrado")
 
-    nueva_venta.total = total_venta
-    db.commit()
-    return {"status": "ok", "venta_id": nueva_venta.id, "total": total_venta}
+            subtotal = producto.precio_venta * item.cantidad
+            total_venta += subtotal
+
+            # Descontar stock de insumos por receta
+            receta_items = db.query(RecetaModel).filter(RecetaModel.producto_id == producto.id).all()
+            for rec in receta_items:
+                insumo = db.query(InsumoModel).filter(InsumoModel.id == rec.insumo_id).first()
+                if insumo:
+                    descuento = rec.cantidad_utilizada * item.cantidad
+                    insumo.cantidad_stock -= descuento
+
+            detalle = DetalleVentaModel(
+                venta_id=nueva_venta.id,
+                producto_id=producto.id,
+                cantidad=item.cantidad,
+                precio_unitario=producto.precio_venta,
+                subtotal=subtotal
+            )
+            db.add(detalle)
+
+        nueva_venta.total = total_venta
+        db.commit()
+        db.refresh(nueva_venta)
+
+        return {"mensaje": "Venta registrada con éxito", "id": nueva_venta.id, "total": nueva_venta.total}
+
+    except Exception as e:
+        db.rollback()
+        print("ERROR EN REGISTRAR VENTA:", str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/ventas/dia/{fecha_str}")
 def obtener_ventas_por_fecha(fecha_str: str, db: Session = Depends(get_db)):

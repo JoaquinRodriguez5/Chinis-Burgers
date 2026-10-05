@@ -49,6 +49,9 @@ class VentaModel(Base):
     id = Column(Integer, primary_key=True, index=True)
     fecha = Column(DateTime, default=datetime.utcnow)
     total = Column(Float, nullable=False)
+    metodo_pago = Column(String, default="Efectivo")
+
+    detalles = relationship("DetalleVentaModel", back_populates="venta", cascade="all, delete-orphan")
 
 class VentaDetalleModel(Base):
     __tablename__ = "venta_detalles"

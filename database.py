@@ -1,21 +1,12 @@
 import os
-from sqlalchemy import create_engine, Column, Integer, String, Float, ForeignKey, DateTime
-from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from datetime import datetime
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey, text
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, relationship
 
-# 1. Obtener la variable DATABASE_URL de Render (o usar SQLite si es local)
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./gastronomia.db")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost/dbname")
 
-# 2. Corrección clave para Neon / Render: SQLAlchemy exige 'postgresql://' en lugar de 'postgres://'
-if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
-
-# 3. Configurar el motor de la base de datos
-engine = create_engine(
-    DATABASE_URL,
-    connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {}
-)
-
+engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -23,54 +14,64 @@ Base = declarative_base()
 
 class InsumoModel(Base):
     __tablename__ = "insumos"
+
     id = Column(Integer, primary_key=True, index=True)
-    nombre = Column(String, unique=True, nullable=False)
+    nombre = Column(String, nullable=False)
     unidad_medida = Column(String, nullable=False)
     cantidad_stock = Column(Float, default=0.0)
     costo_unitario = Column(Float, default=0.0)
-    stock_minimo = Column(Float, default=0.0)
 
 class ProductoModel(Base):
     __tablename__ = "productos"
+
     id = Column(Integer, primary_key=True, index=True)
-    nombre = Column(String, unique=True, nullable=False)
-    categoria = Column(String, nullable=False)
+    nombre = Column(String, nullable=False)
     precio_venta = Column(Float, nullable=False)
+
+    recetas = relationship("RecetaModel", back_populates="producto", cascade="all, delete-orphan")
 
 class RecetaModel(Base):
     __tablename__ = "recetas"
+
     id = Column(Integer, primary_key=True, index=True)
     producto_id = Column(Integer, ForeignKey("productos.id", ondelete="CASCADE"), nullable=False)
     insumo_id = Column(Integer, ForeignKey("insumos.id", ondelete="CASCADE"), nullable=False)
     cantidad_utilizada = Column(Float, nullable=False)
 
+    producto = relationship("ProductoModel", back_populates="recetas")
+    insumo = relationship("InsumoModel")
+
 class VentaModel(Base):
     __tablename__ = "ventas"
+
     id = Column(Integer, primary_key=True, index=True)
     fecha = Column(DateTime, default=datetime.utcnow)
-    total = Column(Float, nullable=False)
+    total = Column(Float, default=0.0)
     metodo_pago = Column(String, default="Efectivo")
 
-    detalles = relationship("DetalleVentaModel", back_populates="venta", cascade="all, delete-orphan")
+    detalles = relationship("VentaDetalleModel", back_populates="venta", cascade="all, delete-orphan")
 
 class VentaDetalleModel(Base):
-    __tablename__ = "venta_detalles"
+    __tablename__ = "detalle_ventas"
+
     id = Column(Integer, primary_key=True, index=True)
     venta_id = Column(Integer, ForeignKey("ventas.id", ondelete="CASCADE"), nullable=False)
     producto_id = Column(Integer, ForeignKey("productos.id"), nullable=False)
     cantidad = Column(Integer, nullable=False)
     precio_unitario = Column(Float, nullable=False)
+    subtotal = Column(Float, nullable=False)
+
+    venta = relationship("VentaModel", back_populates="detalles")
+    producto = relationship("ProductoModel")
 
 class GastoModel(Base):
     __tablename__ = "gastos"
-    id = Column(Integer, primary_key=True, index=True)
-    concepto = Column(String, nullable=False)
-    monto = Column(Float, nullable=False)
-    tipo = Column(String, nullable=False)
-    fecha = Column(DateTime, default=datetime.utcnow)
 
-def init_db():
-    Base.metadata.create_all(bind=engine)
+    id = Column(Integer, primary_key=True, index=True)
+    descripcion = Column(String, nullable=False)
+    monto = Column(Float, nullable=False)
+    categoria = Column(String, default="General")
+    fecha = Column(DateTime, default=datetime.utcnow)
 
 def get_db():
     db = SessionLocal()
@@ -78,3 +79,12 @@ def get_db():
         yield db
     finally:
         db.close()
+
+def init_db():
+    Base.metadata.create_all(bind=engine)
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE ventas ADD COLUMN IF NOT EXISTS metodo_pago VARCHAR DEFAULT 'Efectivo';"))
+            conn.commit()
+        except Exception as e:
+            print("Verificación de columna metodo_pago:", e)

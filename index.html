@@ -4,6 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chinis Burgers</title>
+
+    <!-- PWA Metas y Manifest -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#1d3557">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Chinis Burgers">
+    <link rel="apple-touch-icon" href="logo.png">
+
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
@@ -77,13 +86,6 @@
         nav div.active { color: var(--primary); font-weight: bold; }
         nav div span { display: block; font-size: 1.1rem; }
     </style>
-    <!-- PWA Metas y Manifest -->
-    <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#1d3557">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Chinis Burgers">
-    <link rel="apple-touch-icon" href="logo.png">
 </head>
 <body>
 
@@ -290,6 +292,33 @@
         </div>
     </div>
 
+    <!-- MODAL FLOTANTE EDITAR INSUMO -->
+    <div id="modal-insumo-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; justify-content:center; align-items:center; padding:15px;">
+        <div class="card" style="width:100%; max-width:420px; background:white; border-radius:12px; padding:20px; box-shadow:0 10px 25px rgba(0,0,0,0.2);">
+            <h2 id="modal-insumo-titulo" style="margin-bottom:15px; color:var(--secondary); font-size:1.1rem; text-align:center;">✏ Edit Insumo</h2>
+            
+            <div id="modal-insumo-opciones" style="display:flex; flex-direction:column; gap:10px;">
+                <button type="button" style="background:#f1f5f9; color:var(--secondary); border:1px solid #cbd5e1; padding:12px; border-radius:8px; text-align:left; font-weight:bold; cursor:pointer;" onclick="mostrarPasoModalInsumo(1)">
+                    1. 📦 Ajustar stock<br><small style="font-weight:normal; color:#64748b;">Ajustar al inventario real que contaste hoy</small>
+                </button>
+                <button type="button" style="background:#f1f5f9; color:var(--secondary); border:1px solid #cbd5e1; padding:12px; border-radius:8px; text-align:left; font-weight:bold; cursor:pointer;" onclick="mostrarPasoModalInsumo(2)">
+                    2. ➕ Agregar reposición<br><small style="font-weight:normal; color:#64748b;">Sumar compra realizada (ej: 250g, 1kg, 2L, 5un)</small>
+                </button>
+                <button type="button" style="background:#f1f5f9; color:var(--secondary); border:1px solid #cbd5e1; padding:12px; border-radius:8px; text-align:left; font-weight:bold; cursor:pointer;" onclick="mostrarPasoModalInsumo(3)">
+                    3. 💲 Modificar precio<br><small style="font-weight:normal; color:#64748b;">Actualizar el costo por unidad de medida</small>
+                </button>
+            </div>
+
+            <div id="modal-insumo-form" style="display:none; margin-top:10px;">
+                <label id="modal-insumo-input-label" style="display:block; font-size:0.9rem; font-weight:bold; margin-bottom:5px;"></label>
+                <input type="text" id="modal-insumo-input-val" style="width:100%; padding:10px; border:1px solid #ccc; border-radius:8px; font-size:1rem; margin-bottom:15px;">
+                <button type="button" class="btn-success" style="width:100%; padding:12px; border:none; border-radius:8px; font-weight:bold; cursor:pointer;" onclick="confirmarPasoModalInsumo()">Guardar Cambios</button>
+            </div>
+
+            <button type="button" style="background:#e2e8f0; color:#333; border:none; padding:10px; border-radius:8px; font-weight:bold; margin-top:12px; width:100%; cursor:pointer;" onclick="cerrarModalInsumo()">Cancelar</button>
+        </div>
+    </div>
+
     <!-- NAVEGACIÓN -->
     <nav>
         <div class="nav-item active" onclick="cambiarSeccion('sec-ventas', this)"><span>🛒</span>Vender</div>
@@ -301,7 +330,8 @@
     </nav>
 
     <script>
-        const API_URL = "https://chinis-burgers.onrender.com"; 
+        const API_URL = "https://chinis-burgers.onrender.com";
+
         // Registro de Service Worker PWA
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
@@ -310,12 +340,16 @@
                     .catch(err => console.error('Error al registrar Service Worker PWA:', err));
             });
         }
+
         let chartTop, chartCat;
         let listaInsumosGlobal = [];
         let productosGlobales = [];
         let productosSeleccionados = {};
         let categoriaActivaPOS = "Todos";
         let metodoPagoSeleccionado = "Efectivo";
+
+        let insumoEdicionActual = null;
+        let pasoActivoModalInsumo = 0;
 
         function showToast(mensaje, esError = false) {
             const container = document.getElementById('toast-container');
@@ -828,55 +862,79 @@
             return num;
         }
 
-        async function editarInsumo(id, nombre, stockActual, costoActual, unidadMedida) {
-            const opcion = prompt(
-                `Elegí una opción para '${nombre}':\n\n` +
-                `1. Ajustar stock (Inventario real hoy)\n` +
-                `2. Agregar stock (Sumar reposición: ej. 1kg, 250g, 1L, 10ml, 1un)\n` +
-                `3. Modificar precio ($ por ${unidadMedida})`
-            );
+        // --- LÓGICA MODAL EDITAR INSUMO ---
+        function editarInsumo(id, nombre, stockActual, costoActual, unidadMedida) {
+            insumoEdicionActual = { id, nombre, stockActual, costoActual, unidadMedida };
+            document.getElementById('modal-insumo-titulo').innerText = `✏️ Editar '${nombre}'`;
+            document.getElementById('modal-insumo-opciones').style.display = 'flex';
+            document.getElementById('modal-insumo-form').style.display = 'none';
+            document.getElementById('modal-insumo-overlay').style.display = 'flex';
+        }
 
-            if (opcion === "1") {
-                const inputStock = prompt(`Ingresá el stock REAL actual de '${nombre}' (ej: 250g, 1.5kg, 5un):`, `${stockActual}${unidadMedida}`);
-                if (inputStock === null) return;
+        function cerrarModalInsumo() {
+            document.getElementById('modal-insumo-overlay').style.display = 'none';
+            insumoEdicionActual = null;
+            pasoActivoModalInsumo = 0;
+        }
 
-                const nuevoStock = parsearCantidadYUnidad(inputStock, unidadMedida);
+        function mostrarPasoModalInsumo(paso) {
+            pasoActivoModalInsumo = paso;
+            document.getElementById('modal-insumo-opciones').style.display = 'none';
+            document.getElementById('modal-insumo-form').style.display = 'block';
+
+            const inputVal = document.getElementById('modal-insumo-input-val');
+            const labelEl = document.getElementById('modal-insumo-input-label');
+
+            if (paso === 1) {
+                labelEl.innerText = `Ingresá el stock REAL de '${insumoEdicionActual.nombre}' (ej: 250g, 1.5kg, 5un):`;
+                inputVal.value = `${insumoEdicionActual.stockActual}${insumoEdicionActual.unidadMedida}`;
+            } else if (paso === 2) {
+                labelEl.innerText = `¿Cuánto querés AGREGAR a '${insumoEdicionActual.nombre}'? (ej: 250g, 1kg, 500ml, 5un):`;
+                inputVal.value = '';
+            } else if (paso === 3) {
+                labelEl.innerText = `Nuevo costo por ${insumoEdicionActual.unidadMedida} de '${insumoEdicionActual.nombre}': ($)`;
+                inputVal.value = insumoEdicionActual.costoActual;
+            }
+
+            setTimeout(() => inputVal.focus(), 100);
+        }
+
+        async function confirmarPasoModalInsumo() {
+            if (!insumoEdicionActual) return;
+
+            const inputStr = document.getElementById('modal-insumo-input-val').value.trim();
+            const { id, nombre, stockActual, costoActual, unidadMedida } = insumoEdicionActual;
+
+            if (pasoActivoModalInsumo === 1) {
+                const nuevoStock = parsearCantidadYUnidad(inputStr, unidadMedida);
                 if (nuevoStock === null) {
                     showToast("⚠️ Cantidad no válida", true);
                     return;
                 }
-
                 await enviarActualizacionInsumo(id, { cantidad_stock: nuevoStock, costo_unitario: costoActual });
                 showToast(`✅ Stock de ${nombre} ajustado a ${nuevoStock} ${unidadMedida}`);
 
-            } else if (opcion === "2") {
-                const inputCantidad = prompt(`¿Cuánto querés AGREGAR a '${nombre}'? (ej: 250g, 1kg, 500ml, 2L, 5un):`);
-                if (inputCantidad === null) return;
-
-                const cantidadIngresada = parsearCantidadYUnidad(inputCantidad, unidadMedida);
+            } else if (pasoActivoModalInsumo === 2) {
+                const cantidadIngresada = parsearCantidadYUnidad(inputStr, unidadMedida);
                 if (cantidadIngresada === null || cantidadIngresada <= 0) {
                     showToast("⚠️ Cantidad ingresada no válida", true);
                     return;
                 }
-
                 const nuevoStockFinal = stockActual + cantidadIngresada;
-
                 await enviarActualizacionInsumo(id, { cantidad_stock: nuevoStockFinal, costo_unitario: costoActual });
                 showToast(`✅ Se sumaron ${cantidadIngresada} ${unidadMedida} a ${nombre}`);
 
-            } else if (opcion === "3") {
-                const inputPrecioNuevo = prompt(`Ingresá el nuevo costo por ${unidadMedida} de '${nombre}':`, costoActual);
-                if (inputPrecioNuevo === null) return;
-
-                const nuevoPrecio = parseFloat(inputPrecioNuevo);
+            } else if (pasoActivoModalInsumo === 3) {
+                const nuevoPrecio = parseFloat(inputStr);
                 if (isNaN(nuevoPrecio) || nuevoPrecio < 0) {
                     showToast("⚠️ Precio no válido", true);
                     return;
                 }
-
                 await enviarActualizacionInsumo(id, { cantidad_stock: stockActual, costo_unitario: nuevoPrecio });
                 showToast(`✅ Precio de ${nombre} actualizado a $${nuevoPrecio} / ${unidadMedida}`);
             }
+
+            cerrarModalInsumo();
         }
 
         async function enviarActualizacionInsumo(id, data) {

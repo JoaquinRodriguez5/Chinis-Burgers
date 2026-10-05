@@ -20,12 +20,14 @@ class InsumoModel(Base):
     unidad_medida = Column(String, nullable=False)
     cantidad_stock = Column(Float, default=0.0)
     costo_unitario = Column(Float, default=0.0)
+    stock_minimo = Column(Float, default=0.0)
 
 class ProductoModel(Base):
     __tablename__ = "productos"
 
     id = Column(Integer, primary_key=True, index=True)
     nombre = Column(String, nullable=False)
+    categoria = Column(String, default="Otros")
     precio_venta = Column(Float, nullable=False)
 
     recetas = relationship("RecetaModel", back_populates="producto", cascade="all, delete-orphan")
@@ -68,9 +70,9 @@ class GastoModel(Base):
     __tablename__ = "gastos"
 
     id = Column(Integer, primary_key=True, index=True)
-    descripcion = Column(String, nullable=False)
+    concepto = Column(String, nullable=False)
     monto = Column(Float, nullable=False)
-    categoria = Column(String, default="General")
+    tipo = Column(String, default="General")
     fecha = Column(DateTime, default=datetime.utcnow)
 
 def get_db():
@@ -85,6 +87,8 @@ def init_db():
     with engine.connect() as conn:
         try:
             conn.execute(text("ALTER TABLE ventas ADD COLUMN IF NOT EXISTS metodo_pago VARCHAR DEFAULT 'Efectivo';"))
+            conn.execute(text("ALTER TABLE productos ADD COLUMN IF NOT EXISTS categoria VARCHAR DEFAULT 'Otros';"))
+            conn.execute(text("ALTER TABLE insumos ADD COLUMN IF NOT EXISTS stock_minimo FLOAT DEFAULT 0.0;"))
             conn.commit()
         except Exception as e:
-            print("Verificación de columna metodo_pago:", e)
+            print("Verificación de columnas SQL:", e)

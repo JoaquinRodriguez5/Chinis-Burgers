@@ -27,6 +27,13 @@ app.add_middleware(
 # ==========================================
 # ESQUEMAS PYDANTIC
 # ==========================================
+class ItemVentaSchema(BaseModel):
+    producto_id: int
+    cantidad: int
+
+class VentaCreateSchema(BaseModel):
+    items: List[ItemVentaSchema]
+    metodo_pago: Optional[str] = "Efectivo"
 
 class InsumoCreate(BaseModel):
     nombre: str
@@ -299,7 +306,8 @@ def registrar_venta(venta_data: VentaCreateSchema, db: Session = Depends(get_db)
                     descuento = rec.cantidad_utilizada * item.cantidad
                     insumo.cantidad_stock -= descuento
 
-            detalle = DetalleVentaModel(
+            # Usamos VentaDetalleModel que es la clase definida en database.py
+            detalle = VentaDetalleModel(
                 venta_id=nueva_venta.id,
                 producto_id=producto.id,
                 cantidad=item.cantidad,

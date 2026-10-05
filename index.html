@@ -31,7 +31,6 @@
         label { display: block; font-size: 0.9rem; margin-top: 10px; font-weight: bold; }
         input, select { width: 100%; padding: 12px; margin-top: 5px; border: 1px solid #ccc; border-radius: 8px; font-size: 1rem; }
 
-        /* Categorías Filtro POS */
         .cat-filter-container { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 10px; margin-bottom: 10px; }
         .chip-cat { background: #e2e8f0; color: var(--secondary); border: none; padding: 8px 14px; border-radius: 20px; font-size: 0.85rem; font-weight: bold; white-space: nowrap; cursor: pointer; }
         .chip-cat.active { background: var(--primary); color: white; }
@@ -49,6 +48,11 @@
         .btn-qty { background: var(--secondary); color: white; border: none; width: 32px; height: 32px; border-radius: 50%; font-size: 1.2rem; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; }
         .qty-val { font-size: 1rem; font-weight: bold; width: 20px; }
 
+        /* Botones de Método de Pago */
+        .metodo-pago-container { display: flex; gap: 5px; margin-top: 10px; margin-bottom: 10px; }
+        .btn-metodo { flex: 1; padding: 10px 5px; background: #e2e8f0; border: 2px solid transparent; border-radius: 8px; font-size: 0.8rem; font-weight: bold; cursor: pointer; text-align: center; color: var(--secondary); }
+        .btn-metodo.active { border-color: var(--success); background-color: #e8f5e9; color: #2e7d32; }
+
         button { width: 100%; background-color: var(--primary); color: white; border: none; padding: 12px; border-radius: 8px; font-size: 0.9rem; font-weight: bold; margin-top: 10px; cursor: pointer; }
         .btn-success { background-color: var(--success); }
         .btn-danger { background-color: var(--danger); padding: 6px 10px; width: auto; margin-top: 0; }
@@ -63,7 +67,6 @@
 
         .badge-margen { background: #e8f5e9; color: #2e7d32; font-weight: bold; padding: 3px 8px; border-radius: 12px; font-size: 0.8rem; }
 
-        /* Toast Notifications */
         #toast-container { position: fixed; top: 15px; left: 50%; transform: translateX(-50%); z-index: 9999; width: 90%; max-width: 400px; }
         .toast { padding: 12px 16px; border-radius: 8px; color: white; font-weight: bold; font-size: 0.9rem; text-align: center; box-shadow: 0 4px 12px rgba(0,0,0,0.15); margin-bottom: 8px; transition: opacity 0.3s ease; }
         .toast-success { background-color: var(--success); }
@@ -85,7 +88,6 @@
         <div id="sec-ventas" class="section active">
             <h2>Registrar Venta Rápidamente</h2>
             
-            <!-- Filtro por Categorías -->
             <div class="cat-filter-container" id="pos-cat-filter">
                 <button class="chip-cat active" onclick="filtrarCategoriaPOS('Todos', this)">Todos</button>
                 <button class="chip-cat" onclick="filtrarCategoriaPOS('Pizzas', this)">Pizzas</button>
@@ -95,7 +97,15 @@
             </div>
 
             <div id="grid-productos" class="grid-productos"></div>
-            <button class="btn-success" style="margin-top: 15px;" onclick="procesarVenta()">Confirmar y Cobrar</button>
+
+            <label style="margin-top: 15px;">Método de Pago:</label>
+            <div class="metodo-pago-container">
+                <div class="btn-metodo active" onclick="seleccionarMetodoPago('Efectivo', this)">💵 Efectivo</div>
+                <div class="btn-metodo" onclick="seleccionarMetodoPago('Mercado Pago', this)">📱 MP / Transf.</div>
+                <div class="btn-metodo" onclick="seleccionarMetodoPago('Tarjeta', this)">💳 Tarjeta</div>
+            </div>
+
+            <button class="btn-success" style="margin-top: 10px;" onclick="procesarVenta()">Confirmar y Cobrar</button>
         </div>
 
         <!-- VISTA DE GASTOS -->
@@ -152,6 +162,13 @@
                 <label>Cantidad</label>
                 <input type="number" id="manual-cant" value="1" min="1">
 
+                <label>Método de Pago</label>
+                <select id="manual-metodo-pago">
+                    <option value="Efectivo">Efectivo</option>
+                    <option value="Mercado Pago">Mercado Pago / Transferencia</option>
+                    <option value="Tarjeta">Tarjeta</option>
+                </select>
+
                 <label>Fecha y Hora</label>
                 <input type="datetime-local" id="manual-fecha-hora">
 
@@ -195,22 +212,30 @@
 
         <!-- VISTA DE DASHBOARD -->
         <div id="sec-dashboard" class="section">
-            <h2>📊 Balance General (Hoy)</h2>
+            <h2>📊 Arqueo y Balance (Hoy)</h2>
             <div class="kpi-container">
                 <div class="kpi-card">
-                    <h3>VENTAS HOY</h3>
+                    <h3>VENTAS TOTALES</h3>
                     <p id="kpi-monto">$0.00</p>
                 </div>
-                <div class="kpi-card">
+                <div class="kpi-card" style="background: #2e7d32;">
+                    <h3>💵 EFECTIVO EN CAJA</h3>
+                    <p id="kpi-efectivo">$0.00</p>
+                </div>
+                <div class="kpi-card" style="background: #0288d1;">
+                    <h3>📱 MERCADO PAGO / TRANSF.</h3>
+                    <p id="kpi-mp">$0.00</p>
+                </div>
+                <div class="kpi-card" style="background: #7b1fa2;">
+                    <h3>💳 TARJETAS</h3>
+                    <p id="kpi-tarjetas">$0.00</p>
+                </div>
+                <div class="kpi-card" style="background: var(--danger);">
                     <h3>GASTOS HOY</h3>
                     <p id="kpi-gastos">$0.00</p>
                 </div>
-                <div class="kpi-card">
-                    <h3>COSTO INSUMOS</h3>
-                    <p id="kpi-costo-insumos">$0.00</p>
-                </div>
                 <div class="kpi-card" style="background: var(--success);">
-                    <h3>GANANCIA NETA</h3>
+                    <h3>GANANCIA NETA REAL</h3>
                     <p id="kpi-ganancia-neta">$0.00</p>
                 </div>
             </div>
@@ -275,6 +300,7 @@
         let productosGlobales = [];
         let productosSeleccionados = {};
         let categoriaActivaPOS = "Todos";
+        let metodoPagoSeleccionado = "Efectivo";
 
         function showToast(mensaje, esError = false) {
             const container = document.getElementById('toast-container');
@@ -297,6 +323,12 @@
             if (idSeccion === 'sec-productos') prepararFormularioProductos();
             if (idSeccion === 'sec-calendario') inicializarCalendario();
             if (idSeccion === 'sec-gastos') cargarGastos();
+        }
+
+        function seleccionarMetodoPago(metodo, el) {
+            metodoPagoSeleccionado = metodo;
+            document.querySelectorAll('.btn-metodo').forEach(b => b.classList.remove('active'));
+            el.classList.add('active');
         }
 
         function filtrarCategoriaPOS(cat, el) {
@@ -393,7 +425,10 @@
                                 <button class="btn-danger" style="font-size: 0.75rem;" onclick="eliminarVenta(${v.id})">🗑 Eliminar</button>
                             </div>
                             <div style="margin-top: 5px; font-size: 0.85rem; color: #555;">${itemsStr}</div>
-                            <div style="margin-top: 5px; font-weight: bold; color: var(--secondary);">Total: $${v.total.toFixed(2)}</div>
+                            <div style="margin-top: 5px; display: flex; justify-content: space-between; align-items: center;">
+                                <span style="font-weight: bold; color: var(--secondary);">Total: $${v.total.toFixed(2)}</span>
+                                <small style="background: #e2e8f0; padding: 2px 6px; border-radius: 4px;">💳 ${v.metodo_pago}</small>
+                            </div>
                         </div>`;
                 });
 
@@ -427,6 +462,7 @@
         async function cargarVentaManual() {
             const prodId = parseInt(document.getElementById('manual-prod-id').value);
             const cantidad = parseInt(document.getElementById('manual-cant').value);
+            const metodoPago = document.getElementById('manual-metodo-pago').value;
             const fechaHora = document.getElementById('manual-fecha-hora').value;
 
             if (!prodId || isNaN(cantidad) || cantidad <= 0 || !fechaHora) {
@@ -436,6 +472,7 @@
 
             const data = {
                 items: [{ producto_id: prodId, cantidad: cantidad }],
+                metodo_pago: metodoPago,
                 fecha_custom: fechaHora
             };
 
@@ -663,12 +700,12 @@
                 const res = await fetch(`${API_URL}/ventas`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ items: items })
+                    body: JSON.stringify({ items: items, metodo_pago: metodoPagoSeleccionado })
                 });
 
                 if (res.ok) {
                     const data = await res.json();
-                    showToast(`🎉 ¡Venta cobrada: $${data.total.toFixed(2)}!`);
+                    showToast(`🎉 ¡Venta cobrada: $${data.total.toFixed(2)} (${metodoPagoSeleccionado})!`);
                     productosSeleccionados = {};
                     cargarProductos();
                 }
@@ -677,27 +714,13 @@
 
         async function guardarInsumo() {
             const nombre = document.getElementById('ins-nombre').value.trim();
-            let cantidad = parseFloat(document.getElementById('ins-cantidad').value);
+            const cantidad = parseFloat(document.getElementById('ins-cantidad').value);
             const unidad = document.getElementById('ins-unidad').value;
             const precio = parseFloat(document.getElementById('ins-precio').value);
 
-            if (!nombre || isNaN(cantidad) || isNaN(precio) || cantidad <= 0) {
-                showToast("⚠️ Completa los campos correctamente", true);
-                return;
-            }
+            if (!nombre || isNaN(cantidad) || isNaN(precio)) { showToast("⚠️ Completa los campos", true); return; }
 
-            // Si el insumo está en 'kg' o 'l' y pones 100 o más (ej: 250 g), convierte a 0.25 kg
-            if ((unidad === 'kg' || unidad === 'l') && cantidad >= 100) {
-                cantidad = cantidad / 1000;
-            }
-
-            const data = { 
-                nombre: nombre, 
-                unidad_medida: unidad, 
-                cantidad_comprada: cantidad, 
-                precio_total: precio, 
-                stock_minimo: 0 
-            };
+            const data = { nombre: nombre, unidad_medida: unidad, cantidad_comprada: cantidad, precio_total: precio, stock_minimo: 0 };
 
             try {
                 const res = await fetch(`${API_URL}/insumos`, {
@@ -707,7 +730,7 @@
                 });
 
                 if (res.ok) {
-                    showToast(`✅ Insumo '${nombre}' guardado`);
+                    showToast(`✅ Insumo '${nombre}' cargado`);
                     document.getElementById('ins-nombre').value = '';
                     document.getElementById('ins-cantidad').value = '';
                     document.getElementById('ins-precio').value = '';
@@ -716,7 +739,6 @@
             } catch (e) { console.error(e); }
         }
 
-// Cargar lista de insumos con la unidad pasada correctamente
         async function cargarInsumos() {
             try {
                 const res = await fetch(`${API_URL}/insumos`);
@@ -756,42 +778,34 @@
             } catch (e) { console.error(e); }
         }
 
-        // Función auxiliar para interpretar entradas como "250g", "1kg", "500ml", "2L", "10un" o números simples
         function parsearCantidadYUnidad(textoInput, unidadBase) {
             if (!textoInput) return null;
             let str = textoInput.toString().trim().toLowerCase();
 
-            // Si termina en 'g' (gramos)
             if (str.endsWith('g') && !str.endsWith('kg')) {
                 let val = parseFloat(str.replace('g', ''));
-                return isNaN(val) ? null : val / 1000.0; // Convierte gramos a kilos
+                return isNaN(val) ? null : val / 1000.0;
             }
-            // Si termina en 'kg'
             if (str.endsWith('kg')) {
                 let val = parseFloat(str.replace('kg', ''));
                 return isNaN(val) ? null : val;
             }
-            // Si termina en 'ml'
             if (str.endsWith('ml')) {
                 let val = parseFloat(str.replace('ml', ''));
-                return isNaN(val) ? null : val / 1000.0; // Convierte ml a litros
+                return isNaN(val) ? null : val / 1000.0;
             }
-            // Si termina en 'l'
             if (str.endsWith('l')) {
                 let val = parseFloat(str.replace('l', ''));
                 return isNaN(val) ? null : val;
             }
-            // Si termina en 'un'
             if (str.endsWith('un')) {
                 let val = parseFloat(str.replace('un', ''));
                 return isNaN(val) ? null : val;
             }
 
-            // Si ingresó solo un número sin letras:
             let num = parseFloat(str);
             if (isNaN(num)) return null;
 
-            // Si el insumo base es kg/l y puso un número >= 100 (ej: 250), asume que son gramos/ml
             if ((unidadBase === 'kg' || unidadBase === 'l') && num >= 100) {
                 return num / 1000.0;
             }
@@ -799,8 +813,6 @@
             return num;
         }
 
-                // Menú de edición con las 3 opciones (Ajustar, Agregar, Modificar Precio)
-        // Menú de edición con las 3 opciones (Ajustar, Agregar, Modificar Precio)
         async function editarInsumo(id, nombre, stockActual, costoActual, unidadMedida) {
             const opcion = prompt(
                 `Elegí una opción para '${nombre}':\n\n` +
@@ -810,7 +822,6 @@
             );
 
             if (opcion === "1") {
-                // --- OPCIÓN 1: AJUSTAR STOCK ---
                 const inputStock = prompt(`Ingresá el stock REAL actual de '${nombre}' (ej: 250g, 1.5kg, 5un):`, `${stockActual}${unidadMedida}`);
                 if (inputStock === null) return;
 
@@ -824,7 +835,6 @@
                 showToast(`✅ Stock de ${nombre} ajustado a ${nuevoStock} ${unidadMedida}`);
 
             } else if (opcion === "2") {
-                // --- OPCIÓN 2: AGREGAR STOCK (SIN MODIFICAR PRECIO) ---
                 const inputCantidad = prompt(`¿Cuánto querés AGREGAR a '${nombre}'? (ej: 250g, 1kg, 500ml, 2L, 5un):`);
                 if (inputCantidad === null) return;
 
@@ -834,14 +844,12 @@
                     return;
                 }
 
-                // Sumamos directamente al stock existente manteniendo el costo actual intacto
                 const nuevoStockFinal = stockActual + cantidadIngresada;
 
                 await enviarActualizacionInsumo(id, { cantidad_stock: nuevoStockFinal, costo_unitario: costoActual });
                 showToast(`✅ Se sumaron ${cantidadIngresada} ${unidadMedida} a ${nombre}`);
 
             } else if (opcion === "3") {
-                // --- OPCIÓN 3: MODIFICAR PRECIO ---
                 const inputPrecioNuevo = prompt(`Ingresá el nuevo costo por ${unidadMedida} de '${nombre}':`, costoActual);
                 if (inputPrecioNuevo === null) return;
 
@@ -856,7 +864,6 @@
             }
         }
 
-        // Función que envía la petición PUT a la API
         async function enviarActualizacionInsumo(id, data) {
             try {
                 const res = await fetch(`${API_URL}/insumos/${id}`, {
@@ -879,14 +886,24 @@
             }
         }
 
+        async function eliminarInsumo(id, nombre) {
+            if (!confirm(`¿Seguro que deseas eliminar '${nombre}'?`)) return;
+            try {
+                const res = await fetch(`${API_URL}/insumos/${id}`, { method: 'DELETE' });
+                if (res.ok) { showToast("🗑 Insumo eliminado"); cargarInsumos(); }
+            } catch (e) { console.error(e); }
+        }
+
         async function cargarDashboard() {
             try {
                 const res = await fetch(`${API_URL}/stats/dashboard`);
                 const data = await res.json();
 
                 document.getElementById('kpi-monto').innerText = `$${data.ventas_hoy_monto.toFixed(2)}`;
+                document.getElementById('kpi-efectivo').innerText = `$${data.efectivo_hoy.toFixed(2)}`;
+                document.getElementById('kpi-mp').innerText = `$${data.mp_hoy.toFixed(2)}`;
+                document.getElementById('kpi-tarjetas').innerText = `$${data.tarjeta_hoy.toFixed(2)}`;
                 document.getElementById('kpi-gastos').innerText = `$${data.gastos_hoy_monto.toFixed(2)}`;
-                document.getElementById('kpi-costo-insumos').innerText = `$${data.costo_insumos_hoy.toFixed(2)}`;
                 document.getElementById('kpi-ganancia-neta').innerText = `$${data.ganancia_neta_hoy.toFixed(2)}`;
 
                 const ctxTop = document.getElementById('chartTopProductos').getContext('2d');

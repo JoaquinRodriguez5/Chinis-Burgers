@@ -55,6 +55,7 @@ class ItemVenta(BaseModel):
 
 class RegistrarVenta(BaseModel):
     items: List[ItemVenta]
+    metodo_pago: str = "Efectivo"  # 'Efectivo', 'Mercado Pago', 'Transferencia', 'Tarjeta'
     fecha_custom: Optional[str] = None
 
 class GastoCreate(BaseModel):
@@ -79,7 +80,6 @@ def crear_o_actualizar_insumo(insumo: InsumoCreate, db: Session = Depends(get_db
     
     cantidad_real = insumo.cantidad_comprada
 
-    # Conversión automática: Si la unidad es 'kg' o 'l' e ingresas >= 100 (ej: 250 g), convierte a 0.25 kg/l
     if (insumo.unidad_medida == 'kg' or insumo.unidad_medida == 'l') and cantidad_real >= 100:
         cantidad_real = cantidad_real / 1000.0
 
@@ -111,20 +111,12 @@ def actualizar_insumo(insumo_id: int, datos: InsumoUpdate, db: Session = Depends
     if not insumo:
         raise HTTPException(status_code=404, detail="Insumo no encontrado")
     
-    # Actualizamos el stock real y el costo unitario
     insumo.cantidad_stock = float(datos.cantidad_stock)
     insumo.costo_unitario = float(datos.costo_unitario)
-    
     db.add(insumo)
     db.commit()
     db.refresh(insumo)
-    
-    return {
-        "status": "ok", 
-        "id": insumo.id, 
-        "cantidad_stock": insumo.cantidad_stock, 
-        "costo_unitario": insumo.costo_unitario
-    }
+    return insumo
 
 @app.delete("/insumos/{insumo_id}")
 def eliminar_insumo(insumo_id: int, db: Session = Depends(get_db)):
@@ -138,7 +130,7 @@ def eliminar_insumo(insumo_id: int, db: Session = Depends(get_db)):
 
 
 # ==========================================
-# ENDPOINTS - PRODUCTOS, RECETAS Y COSTEO
+# ENDPOINTS - PRODUCTOS Y RECETAS
 # ==========================================
 
 @app.get("/productos")
@@ -275,7 +267,7 @@ def eliminar_gasto(gasto_id: int, db: Session = Depends(get_db)):
 
 
 # ==========================================
-# ENDPOINTS - VENTAS, CALENDARIO Y HISTORIAL
+# ENDPOINTS - VENTAS Y METODOS DE PAGO
 # ==========================================
 
 @app.post("/ventas")
@@ -291,7 +283,12 @@ def registrar_venta(venta_data: RegistrarVenta, db: Session = Depends(get_db)):
             pass
 
     total_venta = 0.0
-    nueva_venta = VentaModel(fecha=fecha_venta, total=0.0)
+    # Guardamos el metodo_pago en la columna correspondiente
+    nueva_venta = VentaModel(
+        fecha=fecha_venta, 
+        total=0.0, 
+        metodo_pago=venta_data.metodo_pago
+    )
     db.add(nueva_venta)
     db.commit()
     db.refresh(nueva_venta)
@@ -356,6 +353,7 @@ def obtener_ventas_por_fecha(fecha_str: str, db: Session = Depends(get_db)):
             "id": v.id,
             "fecha_hora": v.fecha.strftime("%H:%M"),
             "total": v.total,
+            "metodo_pago": v.metodo_pago or "Efectivo",
             "items": items_list
         })
 
@@ -402,6 +400,16 @@ def obtener_dashboard_stats(db: Session = Depends(get_db)):
     cant_ventas_hoy = db.query(func.count(VentaModel.id))\
         .filter(VentaModel.fecha >= hoy_inicio, VentaModel.fecha <= hoy_fin).scalar()
 
+    # Desglose por métodos de pago hoy
+    efectivo_hoy = db.query(func.coalesce(func.sum(VentaModel.total), 0.0))\
+        .filter(VentaModel.fecha >= hoy_inicio, VentaModel.fecha <= hoy_fin, VentaModel.metodo_pago == 'Efectivo').scalar()
+
+    mp_hoy = db.query(func.coalesce(func.sum(VentaModel.total), 0.0))\
+        .filter(VentaModel.fecha >= hoy_inicio, VentaModel.fecha <= hoy_fin, VentaModel.metodo_pago.in_(['Mercado Pago', 'Transferencia'])).scalar()
+
+    tarjeta_hoy = db.query(func.coalesce(func.sum(VentaModel.total), 0.0))\
+        .filter(VentaModel.fecha >= hoy_inicio, VentaModel.fecha <= hoy_fin, VentaModel.metodo_pago == 'Tarjeta').scalar()
+
     gastos_hoy = db.query(func.coalesce(func.sum(GastoModel.monto), 0.0))\
         .filter(GastoModel.fecha >= hoy_inicio, GastoModel.fecha <= hoy_fin).scalar()
 
@@ -437,6 +445,9 @@ def obtener_dashboard_stats(db: Session = Depends(get_db)):
     return {
         "ventas_hoy_monto": ventas_hoy,
         "ventas_hoy_cantidad": cant_ventas_hoy,
+        "efectivo_hoy": efectivo_hoy,
+        "mp_hoy": mp_hoy,
+        "tarjeta_hoy": tarjeta_hoy,
         "gastos_hoy_monto": gastos_hoy,
         "costo_insumos_hoy": costo_insumos_hoy,
         "ganancia_neta_hoy": ganancia_neta_hoy,

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chinis Burgers - POS & Gestión</title>
+    <title>Chinis Burgers</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
@@ -77,10 +77,17 @@
         nav div.active { color: var(--primary); font-weight: bold; }
         nav div span { display: block; font-size: 1.1rem; }
     </style>
+    <!-- PWA Metas y Manifest -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#1d3557">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Chinis Burgers">
+    <link rel="apple-touch-icon" href="logo.png">
 </head>
 <body>
 
-    <header>🍔 Chinis Burgers POS</header>
+    <header>🍔 Chinis Burgers</header>
     <div id="toast-container"></div>
 
     <div class="container">
@@ -295,6 +302,14 @@
 
     <script>
         const API_URL = "https://chinis-burgers.onrender.com"; 
+        // Registro de Service Worker PWA
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js')
+                    .then(reg => console.log('PWA Service Worker registrado con éxito:', reg.scope))
+                    .catch(err => console.error('Error al registrar Service Worker PWA:', err));
+            });
+        }
         let chartTop, chartCat;
         let listaInsumosGlobal = [];
         let productosGlobales = [];

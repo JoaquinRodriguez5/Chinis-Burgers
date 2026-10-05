@@ -1,0 +1,21 @@
+{
+  "short_name": "Chinis Burgers",
+  "name": "Chinis Burgers",
+  "icons": [
+    {
+      "src": "logo.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "logo.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "start_url": "./index.html",
+  "background_color": "#1d3557",
+  "theme_color": "#1d3557",
+  "display": "standalone",
+  "orientation": "portrait"
+}

@@ -1,47 +1,42 @@
-const CACHE_NAME = 'chinis-pos-v2';
-const ASSETS_TO_CACHE = [
-  './',
-  './index.html',
-  './manifest.json',
-  'https://cdn.jsdelivr.net/npm/chart.js'
-];
+const CACHE_NAME = 'chinis-burgers-live';
 
-// Instalación e inicio de caché
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(ASSETS_TO_CACHE);
-    })
-  );
   self.skipWaiting();
 });
 
-// Activación y limpieza de versiones viejas
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
       return Promise.all(
-        keys.map((key) => {
-          if (key !== CACHE_NAME) {
-            return caches.delete(key);
-          }
-        })
+        keys.map((key) => caches.delete(key))
       );
     })
   );
   self.clients.claim();
 });
 
-// Intercepción de peticiones
+// Estrategia: Buscar SIEMPRE en la red primero
 self.addEventListener('fetch', (event) => {
-  // Las peticiones a la API no se guardan en caché estático para garantizar datos en tiempo real
+  // Ignorar peticiones a la API de Render
   if (event.request.url.includes('onrender.com')) {
     return;
   }
 
   event.respondWith(
-    caches.match(event.request).then((response) => {
-      return response || fetch(event.request);
-    })
+    fetch(event.request)
+      .then((networkResponse) => {
+        // Si la red responde bien, guardamos una copia y mostramos lo NUEVO
+        if (networkResponse && networkResponse.status === 200) {
+          const responseToCache = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, responseToCache);
+          });
+        }
+        return networkResponse;
+      })
+      .catch(() => {
+        // Si NO hay internet, recién ahí usa lo guardado en memoria
+        return caches.match(event.request);
+      })
   );
 });

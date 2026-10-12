@@ -791,43 +791,29 @@
         }
 
         async function cargarInsumos() {
-            try {
-                const res = await fetch(`${API_URL}/insumos`);
-                const insumos = await res.json();
-                let html = '';
+                    try {
+                        const res = await fetch(`${API_URL}/insumos`);
+                        const insumos = await res.json();
+                        let html = '';
 
-                insumos.forEach(i => {
-                    const sinStock = i.cantidad_stock <= 0;
-                    const stockBajo = i.cantidad_stock > 0 && i.cantidad_stock <= 2;
+                        insumos.forEach(i => {
+                            html += `
+                                <div class="list-item">
+                                    <div>
+                                        <strong>${i.nombre}</strong><br>
+                                        <small>Stock Real: ${i.cantidad_stock.toFixed(2)} ${i.unidad_medida}</small><br>
+                                        <small style="color: #666;">Costo: $${i.costo_unitario.toFixed(2)} / ${i.unidad_medida}</small>
+                                    </div>
+                                    <div class="actions">
+                                        <button class="btn-edit" onclick="editarInsumo(${i.id}, '${i.nombre}', ${i.cantidad_stock}, ${i.costo_unitario}, '${i.unidad_medida}')">✏ Edit</button>
+                                        <button class="btn-danger" onclick="eliminarInsumo(${i.id}, '${i.nombre}')">🗑</button>
+                                    </div>
+                                </div>`;
+                        });
 
-                    let styleBg = '';
-                    let badgeStock = `${i.cantidad_stock.toFixed(2)} ${i.unidad_medida}`;
-
-                    if (sinStock) {
-                        styleBg = 'background-color: #fff0f3; padding: 10px; border-radius: 8px;';
-                        badgeStock = `<span style="color: var(--danger); font-weight: bold;">⚠️ SIN STOCK (0 ${i.unidad_medida})</span>`;
-                    } else if (stockBajo) {
-                        styleBg = 'background-color: #fffbe6; padding: 10px; border-radius: 8px;';
-                        badgeStock = `<span style="color: #d97706; font-weight: bold;">⚠️ STOCK BAJO (${i.cantidad_stock.toFixed(2)} ${i.unidad_medida})</span>`;
-                    }
-
-                    html += `
-                        <div class="list-item" style="${styleBg}">
-                            <div>
-                                <strong>${i.nombre}</strong><br>
-                                <small>Stock Real: ${badgeStock}</small><br>
-                                <small style="color: #666;">Costo: $${i.costo_unitario.toFixed(2)} / ${i.unidad_medida}</small>
-                            </div>
-                            <div class="actions">
-                                <button class="btn-edit" onclick="editarInsumo(${i.id}, '${i.nombre}', ${i.cantidad_stock}, ${i.costo_unitario}, '${i.unidad_medida}')">✏ Edit</button>
-                                <button class="btn-danger" onclick="eliminarInsumo(${i.id}, '${i.nombre}')">🗑</button>
-                            </div>
-                        </div>`;
-                });
-
-                document.getElementById('lista-insumos').innerHTML = html || 'No hay insumos registrados.';
-            } catch (e) { console.error(e); }
-        }
+                        document.getElementById('lista-insumos').innerHTML = html || 'No hay insumos registrados.';
+                    } catch (e) { console.error(e); }
+                }
 
         function parsearCantidadYUnidad(textoInput, unidadBase) {
             if (!textoInput) return null;

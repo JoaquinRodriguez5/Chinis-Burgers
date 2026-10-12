@@ -4,13 +4,17 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from pydantic import BaseModel
 from typing import List, Optional
-from datetime import datetime, time, date
+from datetime import datetime, time, date, timedelta
+from zoneinfo import ZoneInfo
 
 from database import (
     get_db, init_db, 
     InsumoModel, ProductoModel, RecetaModel, 
     VentaModel, VentaDetalleModel, GastoModel
 )
+
+# Definir la zona horaria de Argentina
+ARG_TZ = ZoneInfo("America/Argentina/Buenos_Aires")
 
 app = FastAPI(title="Chinis Burgers API")
 
@@ -236,7 +240,7 @@ def listar_gastos(db: Session = Depends(get_db)):
 
 @app.post("/gastos")
 def crear_gasto(gasto_data: GastoCreate, db: Session = Depends(get_db)):
-    fecha_gasto = datetime.utcnow()
+    fecha_gasto = datetime.now(ARG_TZ)
     if gasto_data.fecha_custom:
         try:
             fecha_gasto = datetime.fromisoformat(gasto_data.fecha_custom)
@@ -331,27 +335,30 @@ def obtener_ventas_por_fecha(fecha_str: str, db: Session = Depends(get_db)):
     total_dia = 0.0
 
     for v in ventas:
-        detalles = db.query(VentaDetalleModel, ProductoModel)\
-            .join(ProductoModel, VentaDetalleModel.producto_id == ProductoModel.id)\
-            .filter(VentaDetalleModel.venta_id == v.id).all()
+            detalles = db.query(VentaDetalleModel, ProductoModel)\
+                .join(ProductoModel, VentaDetalleModel.producto_id == ProductoModel.id)\
+                .filter(VentaDetalleModel.venta_id == v.id).all()
 
-        items_list = []
-        for d, p in detalles:
-            items_list.append({
-                "producto_nombre": p.nombre,
-                "cantidad": d.cantidad,
-                "precio_unitario": d.precio_unitario,
-                "subtotal": d.cantidad * d.precio_unitario
+            items_list = []
+            for d, p in detalles:
+                items_list.append({
+                    "producto_nombre": p.nombre,
+                    "cantidad": d.cantidad,
+                    "precio_unitario": d.precio_unitario,
+                    "subtotal": d.cantidad * d.precio_unitario
+                })
+
+            # Restar 3 horas para ajustar la hora almacenada en UTC a la hora de Argentina
+            fecha_arg = v.fecha - timedelta(hours=3) if v.fecha else datetime.now()
+
+            total_dia += v.total
+            resultado.append({
+                "id": v.id,
+                "fecha_hora": fecha_arg.strftime("%H:%M"),
+                "total": v.total,
+                "metodo_pago": v.metodo_pago or "Efectivo",
+                "items": items_list
             })
-
-        total_dia += v.total
-        resultado.append({
-            "id": v.id,
-            "fecha_hora": v.fecha.strftime("%H:%M"),
-            "total": v.total,
-            "metodo_pago": v.metodo_pago or "Efectivo",
-            "items": items_list
-        })
 
     return {
         "fecha": fecha_str,
@@ -387,7 +394,8 @@ def eliminar_venta(venta_id: int, devolver_stock: bool = True, db: Session = Dep
 
 @app.get("/stats/dashboard")
 def obtener_dashboard_stats(db: Session = Depends(get_db)):
-    hoy_inicio = datetime.combine(datetime.utcnow().date(), time.min)
+    hoy_arg = datetime.now(ARG_TZ).date()
+    hoy_inicio = datetime.combine(hoy_arg, time.min)
     hoy_fin = datetime.combine(datetime.utcnow().date(), time.max)
     
     ventas_hoy = db.query(func.coalesce(func.sum(VentaModel.total), 0.0))\

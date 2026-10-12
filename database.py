@@ -3,6 +3,8 @@ from datetime import datetime
 from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost/dbname")
 
@@ -10,6 +12,8 @@ engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
+def hora_argentina():
+    return datetime.now(ZoneInfo("America/Argentina/Buenos_Aires"))
 # --- MODELOS DE LA BASE DE DATOS ---
 
 class InsumoModel(Base):
@@ -47,7 +51,7 @@ class VentaModel(Base):
     __tablename__ = "ventas"
 
     id = Column(Integer, primary_key=True, index=True)
-    fecha = Column(DateTime, default=datetime.utcnow)
+    fecha = Column(DateTime, default=hora_argentina)
     total = Column(Float, default=0.0)
     metodo_pago = Column(String, default="Efectivo")
 
@@ -73,7 +77,7 @@ class GastoModel(Base):
     concepto = Column(String, nullable=False)
     monto = Column(Float, nullable=False)
     tipo = Column(String, default="General")
-    fecha = Column(DateTime, default=datetime.utcnow)
+    fecha = Column(DateTime, default=hora_argentina)
 
 def get_db():
     db = SessionLocal()

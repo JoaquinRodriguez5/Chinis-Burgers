@@ -6,6 +6,25 @@ from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime, time, date, timedelta
 from zoneinfo import ZoneInfo
+import urllib.parse
+import urllib.request
+
+TELEGRAM_BOT_TOKEN = "8818289976:AAG-LoKBZw420RpQzghY2sr8JQ9LX99p6XY"
+TELEGRAM_CHAT_ID = "6869209825"
+
+def enviar_notificacion_telegram(mensaje: str):
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        data = urllib.parse.urlencode({
+            "chat_id": TELEGRAM_CHAT_ID,
+            "text": mensaje,
+            "parse_mode": "Markdown"
+        }).encode("utf-8")
+        
+        req = urllib.request.Request(url, data=data)
+        urllib.request.urlopen(req, timeout=5)
+    except Exception as e:
+        print("Error enviando alerta a Telegram:", e)
 
 from database import (
     get_db, init_db, 
@@ -283,6 +302,23 @@ def registrar_venta(venta_data: VentaCreateSchema, db: Session = Depends(get_db)
                 fecha_venta = datetime.fromisoformat(venta_data.fecha_custom)
             except Exception:
                 pass
+
+# --- NOTIFICACIÓN DE COMANDA VIRTUAL A TELEGRAM ---
+        msg_telegram = f"🍔 *¡NUEVA VENTA REGISTRADA!*\n"
+        msg_telegram += f"🧾 *Ticket #:* {nueva_venta.id}\n"
+        msg_telegram += f"💳 *Pago:* {nueva_venta.metodo_pago}\n"
+        msg_telegram += f"----------------------------\n"
+
+        for item in venta_data.items:
+            prod = db.query(ProductoModel).filter(ProductoModel.id == item.producto_id).first()
+            if prod:
+                msg_telegram += f"• *{item.cantidad}x* {prod.nombre}\n"
+
+        msg_telegram += f"----------------------------\n"
+        msg_telegram += f"💰 *TOTAL:* ${total_venta:.2f}"
+
+        # Enviar comanda por Telegram
+        enviar_notificacion_telegram(msg_telegram)
 
         nueva_venta = VentaModel()
         nueva_venta.fecha = fecha_venta

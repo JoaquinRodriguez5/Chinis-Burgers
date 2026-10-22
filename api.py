@@ -38,6 +38,7 @@ class ItemVentaSchema(BaseModel):
 class VentaCreateSchema(BaseModel):
     items: List[ItemVentaSchema]
     metodo_pago: Optional[str] = "Efectivo"
+    fecha_custom: Optional[str] = None
 
 class InsumoCreate(BaseModel):
     nombre: str
@@ -275,7 +276,16 @@ def eliminar_gasto(gasto_id: int, db: Session = Depends(get_db)):
 @app.post("/ventas")
 def registrar_venta(venta_data: VentaCreateSchema, db: Session = Depends(get_db)):
     try:
+        # Determinar la fecha de la venta (si viene fecha_custom la usa; si no, hora actual de Argentina)
+        fecha_venta = datetime.now(ARG_TZ)
+        if hasattr(venta_data, 'fecha_custom') and venta_data.fecha_custom:
+            try:
+                fecha_venta = datetime.fromisoformat(venta_data.fecha_custom)
+            except Exception:
+                pass
+
         nueva_venta = VentaModel()
+        nueva_venta.fecha = fecha_venta
         nueva_venta.total = 0.0
         nueva_venta.metodo_pago = getattr(venta_data, 'metodo_pago', 'Efectivo') or 'Efectivo'
         
@@ -391,6 +401,55 @@ def eliminar_venta(venta_id: int, devolver_stock: bool = True, db: Session = Dep
 # ==========================================
 # ENDPOINTS - METRICAS, DASHBOARD Y BALANCE
 # ==========================================
+
+@app.get("/ventas/buscar")
+def buscar_ventas_global(query: Optional[str] = None, db: Session = Depends(get_db)):
+    # Trae las últimas 50 ventas ordenadas de la más reciente a la más antigua
+    query_base = db.query(VentaModel).order_by(VentaModel.fecha.desc())
+    
+    ventas = query_base.limit(50).all()
+    resultado = []
+
+    for v in ventas:
+        detalles = db.query(VentaDetalleModel, ProductoModel)\
+            .join(ProductoModel, VentaDetalleModel.producto_id == ProductoModel.id)\
+            .filter(VentaDetalleModel.venta_id == v.id).all()
+
+        items_list = []
+        texto_busqueda = f"#{v.id} "
+        
+        for d, p in detalles:
+            items_list.append({
+                "producto_nombre": p.nombre,
+                "cantidad": d.cantidad,
+                "precio_unitario": d.precio_unitario,
+                "subtotal": d.cantidad * d.precio_unitario
+            })
+            texto_busqueda += f"{p.nombre} "
+
+        fecha_arg = v.fecha - timedelta(hours=3) if v.fecha else datetime.now()
+        fecha_fmt = fecha_arg.strftime("%d/%m/%Y %H:%M")
+
+        # Si el usuario escribió un término de búsqueda, filtramos por ticket, producto o método
+        match = True
+        if query:
+            q = query.lower().trim()
+            coincide_id = str(v.id) == q or f"#{v.id}" == q
+            coincide_prod = q in texto_busqueda.lower()
+            coincide_metodo = q in (v.metodo_pago or "").lower()
+            coincide_fecha = q in fecha_fmt
+            match = coincide_id or coincide_prod or coincide_metodo or coincide_fecha
+
+        if match:
+            resultado.append({
+                "id": v.id,
+                "fecha_completa": fecha_fmt,
+                "total": v.total,
+                "metodo_pago": v.metodo_pago or "Efectivo",
+                "items": items_list
+            })
+
+    return resultado
 
 @app.get("/stats/dashboard")
 def obtener_dashboard_stats(db: Session = Depends(get_db)):

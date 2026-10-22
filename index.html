@@ -150,22 +150,26 @@
         <!-- VISTA DE CALENDARIO Y BUSCADOR -->
         <div id="sec-calendario" class="section">
             <div class="card">
-                <h2>📅 Historial y Búsqueda por Fecha</h2>
+                <h2>🔍 Buscador Rápido de Ventas</h2>
+                <input type="text" id="input-buscar-venta" placeholder="Buscar por producto (ej: Bacon, Muzza) o #Ticket..." oninput="filtrarVentasGlobales()">
                 
-                <!-- Acceso rápido a fechas -->
-                <div style="display: flex; gap: 5px; margin-bottom: 10px; overflow-x: auto; padding-bottom: 5px;">
-                    <button type="button" class="chip-cat" onclick="setFechaFiltro('hoy')">Hoy</button>
-                    <button type="button" class="chip-cat" onclick="setFechaFiltro('ayer')">Ayer</button>
-                    <button type="button" class="chip-cat" onclick="setFechaFiltro('hace7')">Hace 7 Días</button>
+                <div style="margin-top: 10px; display: flex; gap: 10px; align-items: center;">
+                    <div style="flex: 1;">
+                        <label style="margin-top:0;">Filtrar Fecha:</label>
+                        <input type="date" id="cal-fecha" onchange="cargarVentasPorFecha()">
+                    </div>
+                    <button type="button" style="background:#6c757d; margin-top:22px; width:auto; padding:10px 14px;" onclick="cargarUltimasVentasGlobales()">Ver Últimas 50</button>
                 </div>
 
-                <label>Seleccionar Fecha Específica:</label>
-                <input type="date" id="cal-fecha" onchange="cargarVentasPorFecha()">
-                
                 <div style="margin-top: 15px; background: var(--secondary); color: white; padding: 12px; border-radius: 8px; text-align: center;">
-                    <small>TOTAL VENDIDO EL DÍA ELEGIDO:</small>
+                    <small id="cal-label-total">TOTAL VENDIDO:</small>
                     <div id="cal-total-dia" style="font-size: 1.4rem; font-weight: bold;">$0.00</div>
                 </div>
+            </div>
+
+            <div class="card">
+                <h2 id="titulo-lista-ventas">Resultados de Ventas</h2>
+                <div id="cal-lista-ventas"></div>
             </div>
 
             <div class="card">

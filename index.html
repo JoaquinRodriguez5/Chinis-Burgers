@@ -9,6 +9,7 @@
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#1d3557">
     <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Chinis Burgers">
     <link rel="apple-touch-icon" href="logo.png">
@@ -146,11 +147,19 @@
             </div>
         </div>
 
-        <!-- VISTA DE CALENDARIO -->
+        <!-- VISTA DE CALENDARIO Y BUSCADOR -->
         <div id="sec-calendario" class="section">
             <div class="card">
-                <h2>📅 Historial por Fecha</h2>
-                <label>Seleccionar Fecha</label>
+                <h2>📅 Historial y Búsqueda por Fecha</h2>
+                
+                <!-- Acceso rápido a fechas -->
+                <div style="display: flex; gap: 5px; margin-bottom: 10px; overflow-x: auto; padding-bottom: 5px;">
+                    <button type="button" class="chip-cat" onclick="setFechaFiltro('hoy')">Hoy</button>
+                    <button type="button" class="chip-cat" onclick="setFechaFiltro('ayer')">Ayer</button>
+                    <button type="button" class="chip-cat" onclick="setFechaFiltro('hace7')">Hace 7 Días</button>
+                </div>
+
+                <label>Seleccionar Fecha Específica:</label>
                 <input type="date" id="cal-fecha" onchange="cargarVentasPorFecha()">
                 
                 <div style="margin-top: 15px; background: var(--secondary); color: white; padding: 12px; border-radius: 8px; text-align: center;">
@@ -164,25 +173,25 @@
                 <div id="cal-lista-ventas"></div>
             </div>
 
+            <!-- CARGA MANUAL MULTI-PRODUCTO -->
             <div class="card">
-                <h2>➕ Cargar Venta Manual (Fecha pasada)</h2>
-                <label>Producto</label>
-                <select id="manual-prod-id"></select>
+                <h2>➕ Cargar Venta Manual Multi-Producto (Fecha pasada)</h2>
+                
+                <label>Productos del Pedido:</label>
+                <div id="manual-items-container"></div>
+                <button type="button" style="background: #6c757d; margin-top: 5px; width: 100%; padding: 8px;" onclick="agregarFilaVentaManual()">+ Agregar Otro Producto / Envío</button>
 
-                <label>Cantidad</label>
-                <input type="number" id="manual-cant" value="1" min="1">
-
-                <label>Método de Pago</label>
+                <label style="margin-top: 10px;">Método de Pago:</label>
                 <select id="manual-metodo-pago">
                     <option value="Efectivo">Efectivo</option>
                     <option value="Mercado Pago">Mercado Pago / Transferencia</option>
                     <option value="Tarjeta">Tarjeta</option>
                 </select>
 
-                <label>Fecha y Hora</label>
+                <label>Fecha y Hora:</label>
                 <input type="datetime-local" id="manual-fecha-hora">
 
-                <button class="btn-success" onclick="cargarVentaManual()">Registrar Venta Pasada</button>
+                <button class="btn-success" style="margin-top: 15px;" onclick="cargarVentaManual()">Registrar Venta Pasada</button>
             </div>
         </div>
 
@@ -448,11 +457,20 @@
             } catch (e) { console.error(e); }
         }
 
-        function inicializarCalendario() {
-            const hoy = new Date().toISOString().split('T')[0];
-            document.getElementById('cal-fecha').value = hoy;
+        // --- NAVEGACIÓN RÁPIDA DE FECHAS ---
+        function setFechaFiltro(tipo) {
+            const d = new Date();
+            if (tipo === 'ayer') d.setDate(d.getDate() - 1);
+            if (tipo === 'hace7') d.setDate(d.getDate() - 7);
+            
+            const fechaStr = d.toISOString().split('T')[0];
+            document.getElementById('cal-fecha').value = fechaStr;
             cargarVentasPorFecha();
-            prepararFormularioVentaManual();
+        }
+
+        async function inicializarCalendario() {
+            setFechaFiltro('hoy');
+            await prepararFormularioVentaManual();
         }
 
         async function cargarVentasPorFecha() {
@@ -498,31 +516,68 @@
             } catch (e) { console.error(e); }
         }
 
+        // --- FORMULARIO MULTI-PRODUCTO PARA VENTAS MANUALES ---
         async function prepararFormularioVentaManual() {
             try {
-                const res = await fetch(`${API_URL}/productos`);
-                const productos = await res.json();
-                let options = '';
-                productos.forEach(p => {
-                    options += `<option value="${p.id}">${p.nombre} ($${p.precio_venta.toFixed(2)})</option>`;
-                });
-                document.getElementById('manual-prod-id').innerHTML = options;
+                if (productosGlobales.length === 0) {
+                    const res = await fetch(`${API_URL}/productos`);
+                    productosGlobales = await res.json();
+                }
+                document.getElementById('manual-items-container').innerHTML = '';
+                agregarFilaVentaManual();
+                
+                const now = new Date();
+                now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+                document.getElementById('manual-fecha-hora').value = now.toISOString().slice(0, 16);
             } catch (e) { console.error(e); }
         }
 
+        function agregarFilaVentaManual(prodId = "", cant = "1") {
+            const container = document.getElementById('manual-items-container');
+            const div = document.createElement('div');
+            div.className = 'receta-row';
+
+            let options = '<option value="">Seleccionar producto / envío...</option>';
+            productosGlobales.forEach(p => {
+                const sel = (p.id == prodId) ? 'selected' : '';
+                options += `<option value="${p.id}" ${sel}>${p.nombre} ($${p.precio_venta.toFixed(2)})</option>`;
+            });
+
+            div.innerHTML = `
+                <select class="manual-item-prod" style="flex:2;">${options}</select>
+                <input type="number" class="manual-item-cant" style="flex:1;" min="1" value="${cant}">
+                <button type="button" class="btn-danger" style="padding: 6px 10px;" onclick="this.parentElement.remove()">🗑</button>
+            `;
+            container.appendChild(div);
+        }
+
         async function cargarVentaManual() {
-            const prodId = parseInt(document.getElementById('manual-prod-id').value);
-            const cantidad = parseInt(document.getElementById('manual-cant').value);
+            const filas = document.querySelectorAll('#manual-items-container .receta-row');
+            const items = [];
+
+            filas.forEach(f => {
+                const selectEl = f.querySelector('.manual-item-prod');
+                const prodId = parseInt(selectEl ? selectEl.value : 0);
+                const cant = parseInt(f.querySelector('.manual-item-cant').value);
+                if (prodId && !isNaN(cant) && cant > 0) {
+                    items.push({ producto_id: prodId, cantidad: cant });
+                }
+            });
+
             const metodoPago = document.getElementById('manual-metodo-pago').value;
             const fechaHora = document.getElementById('manual-fecha-hora').value;
 
-            if (!prodId || isNaN(cantidad) || cantidad <= 0 || !fechaHora) {
-                showToast("⚠️ Completa producto, cantidad y fecha/hora", true);
+            if (items.length === 0) {
+                showToast("⚠️ Selecciona al menos un producto o envío", true);
+                return;
+            }
+            if (!fechaHora) {
+                showToast("⚠️ Ingresa la fecha y hora de la venta", true);
                 return;
             }
 
             const data = {
-                items: [{ producto_id: prodId, cantidad: cantidad }],
+                items: items,
                 metodo_pago: metodoPago,
                 fecha_custom: fechaHora
             };
@@ -535,10 +590,16 @@
                 });
 
                 if (res.ok) {
-                    showToast("✅ Venta pasada registrada");
+                    showToast("✅ Venta manual cargada con éxito");
+                    prepararFormularioVentaManual();
                     cargarVentasPorFecha();
+                } else {
+                    showToast("⚠️ Error al registrar la venta", true);
                 }
-            } catch (e) { console.error(e); }
+            } catch (e) {
+                console.error(e);
+                showToast("⚠️ Error de conexión", true);
+            }
         }
 
         async function prepararFormularioProductos() {
@@ -791,29 +852,29 @@
         }
 
         async function cargarInsumos() {
-                    try {
-                        const res = await fetch(`${API_URL}/insumos`);
-                        const insumos = await res.json();
-                        let html = '';
+            try {
+                const res = await fetch(`${API_URL}/insumos`);
+                const insumos = await res.json();
+                let html = '';
 
-                        insumos.forEach(i => {
-                            html += `
-                                <div class="list-item">
-                                    <div>
-                                        <strong>${i.nombre}</strong><br>
-                                        <small>Stock Real: ${i.cantidad_stock.toFixed(2)} ${i.unidad_medida}</small><br>
-                                        <small style="color: #666;">Costo: $${i.costo_unitario.toFixed(2)} / ${i.unidad_medida}</small>
-                                    </div>
-                                    <div class="actions">
-                                        <button class="btn-edit" onclick="editarInsumo(${i.id}, '${i.nombre}', ${i.cantidad_stock}, ${i.costo_unitario}, '${i.unidad_medida}')">✏ Edit</button>
-                                        <button class="btn-danger" onclick="eliminarInsumo(${i.id}, '${i.nombre}')">🗑</button>
-                                    </div>
-                                </div>`;
-                        });
+                insumos.forEach(i => {
+                    html += `
+                        <div class="list-item">
+                            <div>
+                                <strong>${i.nombre}</strong><br>
+                                <small>Stock Real: ${i.cantidad_stock.toFixed(2)} ${i.unidad_medida}</small><br>
+                                <small style="color: #666;">Costo: $${i.costo_unitario.toFixed(2)} / ${i.unidad_medida}</small>
+                            </div>
+                            <div class="actions">
+                                <button class="btn-edit" onclick="editarInsumo(${i.id}, '${i.nombre}', ${i.cantidad_stock}, ${i.costo_unitario}, '${i.unidad_medida}')">✏ Edit</button>
+                                <button class="btn-danger" onclick="eliminarInsumo(${i.id}, '${i.nombre}')">🗑</button>
+                            </div>
+                        </div>`;
+                });
 
-                        document.getElementById('lista-insumos').innerHTML = html || 'No hay insumos registrados.';
-                    } catch (e) { console.error(e); }
-                }
+                document.getElementById('lista-insumos').innerHTML = html || 'No hay insumos registrados.';
+            } catch (e) { console.error(e); }
+        }
 
         function parsearCantidadYUnidad(textoInput, unidadBase) {
             if (!textoInput) return null;

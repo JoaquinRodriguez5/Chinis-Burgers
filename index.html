@@ -9,7 +9,6 @@
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#1d3557">
     <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Chinis Burgers">
     <link rel="apple-touch-icon" href="logo.png">
@@ -58,7 +57,6 @@
         .btn-qty { background: var(--secondary); color: white; border: none; width: 32px; height: 32px; border-radius: 50%; font-size: 1.2rem; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; }
         .qty-val { font-size: 1rem; font-weight: bold; width: 20px; }
 
-        /* Botones de Método de Pago */
         .metodo-pago-container { display: flex; gap: 5px; margin-top: 10px; margin-bottom: 10px; }
         .btn-metodo { flex: 1; padding: 10px 5px; background: #e2e8f0; border: 2px solid transparent; border-radius: 8px; font-size: 0.8rem; font-weight: bold; cursor: pointer; text-align: center; color: var(--secondary); }
         .btn-metodo.active { border-color: var(--success); background-color: #e8f5e9; color: #2e7d32; }
@@ -119,7 +117,7 @@
             <button class="btn-success" style="margin-top: 10px;" onclick="procesarVenta()">Confirmar y Cobrar</button>
         </div>
 
-        <!-- VISTA DE GASTOS -->
+        <!-- VISTA DE GASTOS CON FECHA PERSONALIZADA -->
         <div id="sec-gastos" class="section">
             <div class="card">
                 <h2>💸 Cargar Gasto (Luz, Alquiler, Sueldos)</h2>
@@ -138,7 +136,10 @@
                     <option value="Otros">Otros</option>
                 </select>
 
-                <button class="btn-success" onclick="guardarGasto()">Registrar Gasto</button>
+                <label>Fecha del Gasto (Opcional - Si fue en el pasado):</label>
+                <input type="datetime-local" id="gasto-fecha-custom">
+
+                <button class="btn-success" style="margin-top: 15px;" onclick="guardarGasto()">Registrar Gasto</button>
             </div>
 
             <div class="card">
@@ -147,33 +148,30 @@
             </div>
         </div>
 
-        <!-- VISTA DE CALENDARIO Y BUSCADOR -->
+        <!-- VISTA DE CALENDARIO Y BUSCADOR REALTIME -->
         <div id="sec-calendario" class="section">
             <div class="card">
-                <h2>🔍 Buscador Rápido de Ventas</h2>
-                <input type="text" id="input-buscar-venta" placeholder="Buscar por producto (ej: Bacon, Muzza) o #Ticket..." oninput="filtrarVentasGlobales()">
+                <h2>🔍 Buscar Ventas en el Historial</h2>
                 
+                <label>Buscar por Producto o #Ticket:</label>
+                <input type="text" id="input-buscar-venta" placeholder="Ej: Bacon, Muzza, #12..." onkeyup="filtrarVentasGlobales()">
+
                 <div style="margin-top: 10px; display: flex; gap: 10px; align-items: center;">
                     <div style="flex: 1;">
-                        <label style="margin-top:0;">Filtrar Fecha:</label>
+                        <label style="margin-top:0;">Filtrar por Día:</label>
                         <input type="date" id="cal-fecha" onchange="cargarVentasPorFecha()">
                     </div>
                     <button type="button" style="background:#6c757d; margin-top:22px; width:auto; padding:10px 14px;" onclick="cargarUltimasVentasGlobales()">Ver Últimas 50</button>
                 </div>
 
                 <div style="margin-top: 15px; background: var(--secondary); color: white; padding: 12px; border-radius: 8px; text-align: center;">
-                    <small id="cal-label-total">TOTAL VENDIDO:</small>
+                    <small id="cal-label-total">TOTAL MOSTRADO:</small>
                     <div id="cal-total-dia" style="font-size: 1.4rem; font-weight: bold;">$0.00</div>
                 </div>
             </div>
 
             <div class="card">
                 <h2 id="titulo-lista-ventas">Resultados de Ventas</h2>
-                <div id="cal-lista-ventas"></div>
-            </div>
-
-            <div class="card">
-                <h2>Ventas del Día</h2>
                 <div id="cal-lista-ventas"></div>
             </div>
 
@@ -347,12 +345,11 @@
     <script>
         const API_URL = "https://chinis-burgers.onrender.com";
 
-        // Registro de Service Worker PWA
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('./sw.js')
-                    .then(reg => console.log('PWA Service Worker registrado con éxito:', reg.scope))
-                    .catch(err => console.error('Error al registrar Service Worker PWA:', err));
+                    .then(reg => console.log('Service Worker registrado:', reg.scope))
+                    .catch(err => console.error('Error SW:', err));
             });
         }
 
@@ -360,6 +357,7 @@
         let listaInsumosGlobal = [];
         let productosGlobales = [];
         let productosSeleccionados = {};
+        let ventasGlobalesCache = [];
         let categoriaActivaPOS = "Todos";
         let metodoPagoSeleccionado = "Efectivo";
 
@@ -424,6 +422,11 @@
                 });
 
                 document.getElementById('lista-gastos').innerHTML = html || 'No hay gastos registrados.';
+                
+                // Setear fecha actual en input custom
+                const now = new Date();
+                now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+                document.getElementById('gasto-fecha-custom').value = now.toISOString().slice(0, 16);
             } catch (e) { console.error(e); }
         }
 
@@ -431,6 +434,7 @@
             const concepto = document.getElementById('gasto-concepto').value.trim();
             const monto = parseFloat(document.getElementById('gasto-monto').value);
             const tipo = document.getElementById('gasto-tipo').value;
+            const fechaCustom = document.getElementById('gasto-fecha-custom').value;
 
             if (!concepto || isNaN(monto) || monto <= 0) {
                 showToast("⚠️ Ingresa concepto y monto válido", true);
@@ -441,7 +445,12 @@
                 const res = await fetch(`${API_URL}/gastos`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ concepto: concepto, monto: monto, tipo: tipo })
+                    body: JSON.stringify({
+                        concepto: concepto,
+                        monto: monto,
+                        tipo: tipo,
+                        fecha_custom: fechaCustom || null
+                    })
                 });
 
                 if (res.ok) {
@@ -461,20 +470,67 @@
             } catch (e) { console.error(e); }
         }
 
-        // --- NAVEGACIÓN RÁPIDA DE FECHAS ---
-        function setFechaFiltro(tipo) {
-            const d = new Date();
-            if (tipo === 'ayer') d.setDate(d.getDate() - 1);
-            if (tipo === 'hace7') d.setDate(d.getDate() - 7);
-            
-            const fechaStr = d.toISOString().split('T')[0];
-            document.getElementById('cal-fecha').value = fechaStr;
-            cargarVentasPorFecha();
+        // --- BUSCADOR GLOBAL Y HISTORIAL ---
+        async function inicializarCalendario() {
+            document.getElementById('input-buscar-venta').value = '';
+            await cargarUltimasVentasGlobales();
+            await prepararFormularioVentaManual();
         }
 
-        async function inicializarCalendario() {
-            setFechaFiltro('hoy');
-            await prepararFormularioVentaManual();
+        async function cargarUltimasVentasGlobales() {
+            try {
+                document.getElementById('cal-fecha').value = '';
+                document.getElementById('titulo-lista-ventas').innerText = "Últimas 50 Ventas Registradas";
+                document.getElementById('cal-label-total').innerText = "TOTAL MOSTRADO:";
+                
+                const res = await fetch(`${API_URL}/ventas/buscar`);
+                ventasGlobalesCache = await res.json();
+                renderizarListaVentasBuscadas(ventasGlobalesCache);
+            } catch (e) { console.error(e); }
+        }
+
+        function filtrarVentasGlobales() {
+            const q = document.getElementById('input-buscar-venta').value.toLowerCase().trim();
+            if (!q) {
+                renderizarListaVentasBuscadas(ventasGlobalesCache);
+                return;
+            }
+
+            const filtradas = ventasGlobalesCache.filter(v => {
+                const matchId = v.id.toString() === q || `#${v.id}` === q;
+                const matchMetodo = v.metodo_pago.toLowerCase().includes(q);
+                const matchFecha = v.fecha_completa.includes(q);
+                const matchItem = v.items.some(i => i.producto_nombre.toLowerCase().includes(q));
+                return matchId || matchMetodo || matchFecha || matchItem;
+            });
+
+            renderizarListaVentasBuscadas(filtradas);
+        }
+
+        function renderizarListaVentasBuscadas(lista) {
+            let total = 0;
+            let html = '';
+
+            lista.forEach(v => {
+                total += v.total;
+                let itemsStr = v.items.map(i => `${i.cantidad}x ${i.producto_nombre} ($${i.subtotal.toFixed(2)})`).join(', ');
+
+                html += `
+                    <div style="background: #f1f3f5; border-left: 4px solid var(--primary); padding: 10px; margin-bottom: 10px; border-radius: 6px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <strong>Ticket #${v.id} - ${v.fecha_completa} hs</strong>
+                            <button class="btn-danger" style="font-size: 0.75rem;" onclick="eliminarVenta(${v.id})">🗑 Eliminar</button>
+                        </div>
+                        <div style="margin-top: 5px; font-size: 0.85rem; color: #555;">${itemsStr}</div>
+                        <div style="margin-top: 5px; display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-weight: bold; color: var(--secondary);">Total: $${v.total.toFixed(2)}</span>
+                            <small style="background: #e2e8f0; padding: 2px 6px; border-radius: 4px;">💳 ${v.metodo_pago}</small>
+                        </div>
+                    </div>`;
+            });
+
+            document.getElementById('cal-total-dia').innerText = `$${total.toFixed(2)}`;
+            document.getElementById('cal-lista-ventas').innerHTML = html || 'No se encontraron ventas que coincidan.';
         }
 
         async function cargarVentasPorFecha() {
@@ -485,6 +541,8 @@
                 const res = await fetch(`${API_URL}/ventas/dia/${fecha}`);
                 const data = await res.json();
 
+                document.getElementById('titulo-lista-ventas').innerText = `Ventas del día: ${fecha}`;
+                document.getElementById('cal-label-total').innerText = "TOTAL DÍA:";
                 document.getElementById('cal-total-dia').innerText = `$${data.total_dia.toFixed(2)}`;
                 let html = '';
 
@@ -515,12 +573,11 @@
                 const res = await fetch(`${API_URL}/ventas/${id}?devolver_stock=${devolver}`, { method: 'DELETE' });
                 if (res.ok) {
                     showToast("🗑 Venta eliminada");
-                    cargarVentasPorFecha();
+                    cargarUltimasVentasGlobales();
                 }
             } catch (e) { console.error(e); }
         }
 
-        // --- FORMULARIO MULTI-PRODUCTO PARA VENTAS MANUALES ---
         async function prepararFormularioVentaManual() {
             try {
                 if (productosGlobales.length === 0) {
@@ -596,7 +653,7 @@
                 if (res.ok) {
                     showToast("✅ Venta manual cargada con éxito");
                     prepararFormularioVentaManual();
-                    cargarVentasPorFecha();
+                    cargarUltimasVentasGlobales();
                 } else {
                     showToast("⚠️ Error al registrar la venta", true);
                 }
@@ -915,7 +972,6 @@
             return num;
         }
 
-        // --- LÓGICA MODAL EDITAR INSUMO ---
         function editarInsumo(id, nombre, stockActual, costoActual, unidadMedida) {
             insumoEdicionActual = { id, nombre, stockActual, costoActual, unidadMedida };
             document.getElementById('modal-insumo-titulo').innerText = `✏️ Editar '${nombre}'`;

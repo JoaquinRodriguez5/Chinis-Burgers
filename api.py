@@ -403,11 +403,8 @@ def eliminar_venta(venta_id: int, devolver_stock: bool = True, db: Session = Dep
 # ==========================================
 
 @app.get("/ventas/buscar")
-def buscar_ventas_global(query: Optional[str] = None, db: Session = Depends(get_db)):
-    # Trae las últimas 50 ventas ordenadas de la más reciente a la más antigua
-    query_base = db.query(VentaModel).order_by(VentaModel.fecha.desc())
-    
-    ventas = query_base.limit(50).all()
+def buscar_ventas_global(db: Session = Depends(get_db)):
+    ventas = db.query(VentaModel).order_by(VentaModel.fecha.desc()).limit(50).all()
     resultado = []
 
     for v in ventas:
@@ -416,8 +413,6 @@ def buscar_ventas_global(query: Optional[str] = None, db: Session = Depends(get_
             .filter(VentaDetalleModel.venta_id == v.id).all()
 
         items_list = []
-        texto_busqueda = f"#{v.id} "
-        
         for d, p in detalles:
             items_list.append({
                 "producto_nombre": p.nombre,
@@ -425,29 +420,17 @@ def buscar_ventas_global(query: Optional[str] = None, db: Session = Depends(get_
                 "precio_unitario": d.precio_unitario,
                 "subtotal": d.cantidad * d.precio_unitario
             })
-            texto_busqueda += f"{p.nombre} "
 
         fecha_arg = v.fecha - timedelta(hours=3) if v.fecha else datetime.now()
         fecha_fmt = fecha_arg.strftime("%d/%m/%Y %H:%M")
 
-        # Si el usuario escribió un término de búsqueda, filtramos por ticket, producto o método
-        match = True
-        if query:
-            q = query.lower().trim()
-            coincide_id = str(v.id) == q or f"#{v.id}" == q
-            coincide_prod = q in texto_busqueda.lower()
-            coincide_metodo = q in (v.metodo_pago or "").lower()
-            coincide_fecha = q in fecha_fmt
-            match = coincide_id or coincide_prod or coincide_metodo or coincide_fecha
-
-        if match:
-            resultado.append({
-                "id": v.id,
-                "fecha_completa": fecha_fmt,
-                "total": v.total,
-                "metodo_pago": v.metodo_pago or "Efectivo",
-                "items": items_list
-            })
+        resultado.append({
+            "id": v.id,
+            "fecha_completa": fecha_fmt,
+            "total": v.total,
+            "metodo_pago": v.metodo_pago or "Efectivo",
+            "items": items_list
+        })
 
     return resultado
 

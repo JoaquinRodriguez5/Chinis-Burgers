@@ -8,11 +8,15 @@ from datetime import datetime, time, date, timedelta
 from zoneinfo import ZoneInfo
 import urllib.parse
 import urllib.request
+import os
 
-TELEGRAM_BOT_TOKEN = "8818289976:AAG-LoKBZw420RpQzghY2sr8JQ9LX99p6XY"
-TELEGRAM_CHAT_ID = "6869209825"
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 
 def enviar_notificacion_telegram(mensaje: str):
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        print("Telegram no configurado en variables de entorno")
+        return
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
         data = urllib.parse.urlencode({

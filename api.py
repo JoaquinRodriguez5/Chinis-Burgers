@@ -1,14 +1,24 @@
+import os
+import urllib.parse
+import urllib.request
+from typing import List, Optional
+from datetime import datetime, time, date, timedelta
+from zoneinfo import ZoneInfo
+
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from pydantic import BaseModel
-from typing import List, Optional
-from datetime import datetime, time, date, timedelta
-from zoneinfo import ZoneInfo
-import urllib.parse
-import urllib.request
-import os
+
+from database import (
+    get_db, init_db, 
+    InsumoModel, ProductoModel, RecetaModel, 
+    VentaModel, VentaDetalleModel, GastoModel
+)
+
+# Definir la zona horaria de Argentina
+ARG_TZ = ZoneInfo("America/Argentina/Buenos_Aires")
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
@@ -29,15 +39,6 @@ def enviar_notificacion_telegram(mensaje: str):
         urllib.request.urlopen(req, timeout=5)
     except Exception as e:
         print("Error enviando alerta a Telegram:", e)
-
-from database import (
-    get_db, init_db, 
-    InsumoModel, ProductoModel, RecetaModel, 
-    VentaModel, VentaDetalleModel, GastoModel
-)
-
-# Definir la zona horaria de Argentina
-ARG_TZ = ZoneInfo("America/Argentina/Buenos_Aires")
 
 app = FastAPI(title="Chinis Burgers API")
 
@@ -307,30 +308,13 @@ def registrar_venta(venta_data: VentaCreateSchema, db: Session = Depends(get_db)
             except Exception:
                 pass
 
-# --- NOTIFICACIÓN DE COMANDA VIRTUAL A TELEGRAM ---
-        msg_telegram = f"🍔 *¡NUEVA VENTA REGISTRADA!*\n"
-        msg_telegram += f"🧾 *Ticket #:* {nueva_venta.id}\n"
-        msg_telegram += f"💳 *Pago:* {nueva_venta.metodo_pago}\n"
-        msg_telegram += f"----------------------------\n"
-
-        for item in venta_data.items:
-            prod = db.query(ProductoModel).filter(ProductoModel.id == item.producto_id).first()
-            if prod:
-                msg_telegram += f"• *{item.cantidad}x* {prod.nombre}\n"
-
-        msg_telegram += f"----------------------------\n"
-        msg_telegram += f"💰 *TOTAL:* ${total_venta:.2f}"
-
-        # Enviar comanda por Telegram
-        enviar_notificacion_telegram(msg_telegram)
-
         nueva_venta = VentaModel()
         nueva_venta.fecha = fecha_venta
         nueva_venta.total = 0.0
         nueva_venta.metodo_pago = getattr(venta_data, 'metodo_pago', 'Efectivo') or 'Efectivo'
         
         db.add(nueva_venta)
-        db.flush()
+        db.flush()  # Asigna ID a nueva_venta
 
         total_venta = 0.0
 
@@ -362,6 +346,25 @@ def registrar_venta(venta_data: VentaCreateSchema, db: Session = Depends(get_db)
         db.commit()
         db.refresh(nueva_venta)
 
+        # --- NOTIFICACIÓN DE COMANDA VIRTUAL A TELEGRAM ---
+        try:
+            msg_telegram = f"🍔 *¡NUEVA VENTA REGISTRADA!*\n"
+            msg_telegram += f"🧾 *Ticket #:* {nueva_venta.id}\n"
+            msg_telegram += f"💳 *Pago:* {nueva_venta.metodo_pago}\n"
+            msg_telegram += f"----------------------------\n"
+
+            for item in venta_data.items:
+                prod = db.query(ProductoModel).filter(ProductoModel.id == item.producto_id).first()
+                if prod:
+                    msg_telegram += f"• *{item.cantidad}x* {prod.nombre}\n"
+
+            msg_telegram += f"----------------------------\n"
+            msg_telegram += f"💰 *TOTAL:* ${total_venta:.2f}"
+
+            enviar_notificacion_telegram(msg_telegram)
+        except Exception as err_tg:
+            print("Error secundario al enviar Telegram:", err_tg)
+
         return {"mensaje": "Venta registrada con éxito", "id": nueva_venta.id, "total": nueva_venta.total}
 
     except Exception as e:
@@ -385,30 +388,30 @@ def obtener_ventas_por_fecha(fecha_str: str, db: Session = Depends(get_db)):
     total_dia = 0.0
 
     for v in ventas:
-            detalles = db.query(VentaDetalleModel, ProductoModel)\
-                .join(ProductoModel, VentaDetalleModel.producto_id == ProductoModel.id)\
-                .filter(VentaDetalleModel.venta_id == v.id).all()
+        detalles = db.query(VentaDetalleModel, ProductoModel)\
+            .join(ProductoModel, VentaDetalleModel.producto_id == ProductoModel.id)\
+            .filter(VentaDetalleModel.venta_id == v.id).all()
 
-            items_list = []
-            for d, p in detalles:
-                items_list.append({
-                    "producto_nombre": p.nombre,
-                    "cantidad": d.cantidad,
-                    "precio_unitario": d.precio_unitario,
-                    "subtotal": d.cantidad * d.precio_unitario
-                })
-
-            # Restar 3 horas para ajustar la hora almacenada en UTC a la hora de Argentina
-            fecha_arg = v.fecha - timedelta(hours=3) if v.fecha else datetime.now()
-
-            total_dia += v.total
-            resultado.append({
-                "id": v.id,
-                "fecha_hora": fecha_arg.strftime("%H:%M"),
-                "total": v.total,
-                "metodo_pago": v.metodo_pago or "Efectivo",
-                "items": items_list
+        items_list = []
+        for d, p in detalles:
+            items_list.append({
+                "producto_nombre": p.nombre,
+                "cantidad": d.cantidad,
+                "precio_unitario": d.precio_unitario,
+                "subtotal": d.cantidad * d.precio_unitario
             })
+
+        # Restar 3 horas para ajustar la hora almacenada en UTC a la hora de Argentina
+        fecha_arg = v.fecha - timedelta(hours=3) if v.fecha else datetime.now()
+
+        total_dia += v.total
+        resultado.append({
+            "id": v.id,
+            "fecha_hora": fecha_arg.strftime("%H:%M"),
+            "total": v.total,
+            "metodo_pago": v.metodo_pago or "Efectivo",
+            "items": items_list
+        })
 
     return {
         "fecha": fecha_str,
